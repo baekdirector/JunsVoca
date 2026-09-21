@@ -12,11 +12,14 @@ function todayLabel() {
 
 export function Home() {
   const [stats, setStats] = useState<HomeStats | null>(null)
-  const [latestWordSetId, setLatestWordSetId] = useState<number | null>(null)
+  // undefined: 아직 불러오는 중, null: 단어장 없음
+  const [latestWordSetId, setLatestWordSetId] = useState<number | null | undefined>(undefined)
 
   useEffect(() => {
-    getHomeStats().then(setStats)
-    getLatestWordSet().then((s) => setLatestWordSetId(s?.id ?? null))
+    getHomeStats().then(setStats).catch(() => {})
+    getLatestWordSet()
+      .then((s) => setLatestWordSetId(s?.id ?? null))
+      .catch(() => setLatestWordSetId(null))
   }, [])
 
   return (
@@ -48,9 +51,9 @@ export function Home() {
         </div>
 
         <div className="flex gap-2.5 pt-5">
-          <StatChip icon={<StarIcon width={14} height={14} className="text-gold" />} label="연속 학습" value={`${stats?.streakDays ?? 0}일`} />
-          <StatChip icon={<CheckCircleIcon width={14} height={14} className="text-success" />} label="주간 정답률" value={`${stats?.weeklyAccuracy ?? 0}%`} />
-          <StatChip icon={<BookIcon width={14} height={14} className="text-primary" />} label="학습 단어" value={`${stats?.totalWords ?? 0}개`} />
+          <StatChip icon={<StarIcon width={14} height={14} className="text-gold" />} label="연속 학습" value={stats ? `${stats.streakDays}일` : '–'} />
+          <StatChip icon={<CheckCircleIcon width={14} height={14} className="text-success" />} label="주간 정답률" value={stats ? `${stats.weeklyAccuracy}%` : '–'} />
+          <StatChip icon={<BookIcon width={14} height={14} className="text-primary" />} label="학습 단어" value={stats ? `${stats.totalWords}개` : '–'} />
         </div>
 
         <div className="flex flex-col gap-3 pt-6">
@@ -80,7 +83,11 @@ export function Home() {
             <div className="flex-1">
               <div className="text-[16px] font-bold">오늘의 테스트 시작하기</div>
               <div className="mt-0.5 text-[12.5px] text-ink-muted">
-                {latestWordSetId ? '저장된 단어장으로 바로 퀴즈 풀기' : '먼저 단어장을 만들어주세요'}
+                {latestWordSetId === undefined
+                  ? '단어장을 불러오는 중...'
+                  : latestWordSetId
+                    ? '저장된 단어장으로 바로 퀴즈 풀기'
+                    : '먼저 단어장을 만들어주세요'}
               </div>
             </div>
             <ChevronRightIcon width={18} height={18} className="text-ink-muted" />

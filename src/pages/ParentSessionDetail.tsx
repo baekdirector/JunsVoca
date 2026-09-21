@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ArrowLeftIcon, CheckIcon, InfoIcon, XIcon } from '../components/icons'
 import { getAttemptDetail, type QuizAnswerRecord, type QuizSessionRecord } from '../lib/db'
+import { Loading } from '../components/Loading'
 import { formatDateTime, formatDuration } from '../lib/quiz'
 
 export function ParentSessionDetail() {
@@ -14,7 +15,7 @@ export function ParentSessionDetail() {
   }, [groupId])
 
   if (!data) {
-    return <div className="flex min-h-svh items-center justify-center bg-bg text-ink-muted">불러오는 중...</div>
+    return <Loading screen />
   }
 
   const firstRound = data.rounds.find((r) => r.round === 1)
@@ -82,7 +83,7 @@ export function ParentSessionDetail() {
                 <tr key={a.id} className={a.correct ? 'bg-success-tint' : 'bg-error-tint'}>
                   <td className="px-3.5 py-2.5 text-ink-muted">{i + 1}</td>
                   <td className="px-3.5 py-2.5">{a.questionType === 'spelling' ? '철자 쓰기' : '뜻 쓰기'}</td>
-                  <td className="px-3.5 py-2.5 font-display font-bold">{a.term}</td>
+                  <td className="px-3.5 py-2.5 font-display text-[15.5px] font-bold">{a.term}</td>
                   <td className="px-3.5 py-2.5">{a.correctAnswer}</td>
                   <td className={a.correct ? '' : 'px-3.5 py-2.5 text-error'}>
                     {!a.correct ? (a.userAnswer || '(건너뜀)') : a.userAnswer}

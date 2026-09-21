@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeftIcon, ChevronRightIcon, ClockIcon, StarIcon, BookIcon, CheckCircleIcon } from '../components/icons'
 import { getAttempts, getMissedWordCounts, type AttemptSummary } from '../lib/db'
+import { Loading } from '../components/Loading'
 import { formatDate, formatDuration, formatTime } from '../lib/quiz'
 
 // Frozen at module load -- the "this week" window doesn't need to tick live.
@@ -23,7 +24,7 @@ export function ParentDashboard() {
   }, [])
 
   if (!attempts) {
-    return <div className="flex min-h-svh items-center justify-center bg-bg text-ink-muted">불러오는 중...</div>
+    return <Loading screen />
   }
 
   const totalSessions = attempts.length
@@ -125,7 +126,7 @@ export function ParentDashboard() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-baseline justify-between gap-2">
-                        <span className="truncate font-display text-[13.5px] font-bold">{m.term}</span>
+                        <span className="truncate font-display text-[15.5px] font-bold">{m.term}</span>
                         <span className="flex-none text-[12px] font-bold text-ink-muted">{m.wrong}회</span>
                       </div>
                       <div className="mt-0.5 truncate text-[11.5px] text-ink-muted">{m.meaning}</div>

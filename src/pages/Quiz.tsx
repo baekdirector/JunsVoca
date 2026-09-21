@@ -1,8 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { CheckCircleIcon, SpeakerIcon, StarIcon, XCircleIcon, XIcon } from '../components/icons'
+import { CheckCircleIcon, PencilIcon, SpeakerIcon, StarIcon, XCircleIcon, XIcon } from '../components/icons'
+import { Loading } from '../components/Loading'
 import { useSpeak } from '../lib/useSpeak'
-import { getWordSet, getWordsBySet, getWrongNotes, recordQuizRound, type QuizAnswerRecord } from '../lib/db'
+import {
+  getWordSet,
+  getWordsBySet,
+  getWrongNotes,
+  recordQuizRound,
+  updateWordSetTitle,
+  type QuizAnswerRecord,
+} from '../lib/db'
 import {
   checkAnswer,
   formatDateTime,
@@ -13,10 +21,16 @@ import {
   type QuizWord,
 } from '../lib/quiz'
 
+type QuizOrder = 'shuffle' | 'ordered'
+
 type Phase = 'loading' | 'nowords' | 'setup' | 'asking' | 'round-summary'
 
 const COUNT_OPTIONS = [5, 10, 20] as const
 const ALL_WORDS = 0
+const ORDER_OPTIONS: { value: QuizOrder; label: string }[] = [
+  { value: 'shuffle', label: '섞기' },
+  { value: 'ordered', label: '단어장 순서대로' },
+]
 const MODE_OPTIONS: { value: QuizMode; label: string }[] = [
   { value: 'mixed', label: '섞어서' },
   { value: 'meaning', label: '영어→뜻' },
@@ -51,6 +65,8 @@ export function Quiz() {
   const [allWords, setAllWords] = useState<QuizWord[]>([])
   const [questionCount, setQuestionCount] = useState<number>(ALL_WORDS)
   const [mode, setMode] = useState<QuizMode>('mixed')
+  const [order, setOrder] = useState<QuizOrder>('shuffle')
+  const [titleError, setTitleError] = useState('')
 
   const [questions, setQuestions] = useState<Question[]>([])
   const [qIndex, setQIndex] = useState(0)
@@ -60,6 +76,7 @@ export function Quiz() {
   const roundAnswersRef = useRef<AnswerLog[]>([])
   const roundStartedAtRef = useRef(0)
   const firstRoundRef = useRef({ correct: 0, total: 0 })
+  const savedTitleRef = useRef('')
   const [roundResult, setRoundResult] = useState<RoundResult | null>(null)
 
   const { speak, speakingTerm } = useSpeak()
@@ -91,6 +108,7 @@ export function Quiz() {
         return
       }
       setWordSetTitle(title)
+      savedTitleRef.current = title
       setAllWords(words)
       setPhase('setup')
     })()
@@ -101,7 +119,7 @@ export function Quiz() {
   }, [wordSetId])
 
   function startRound(words: QuizWord[], roundNumber: number, count?: number) {
-    setQuestions(generateQuestions(words, { count, mode }))
+    setQuestions(generateQuestions(words, { count, mode, shuffle: order === 'shuffle' }))
     setQIndex(0)
     setAnswer('')
     setFeedback('idle')
@@ -169,6 +187,25 @@ export function Quiz() {
     setPhase('round-summary')
   }
 
+  async function saveTitle() {
+    const trimmed = wordSetTitle.trim()
+    if (wordSetId === null) return
+    if (!trimmed) {
+      setWordSetTitle(savedTitleRef.current)
+      return
+    }
+    setWordSetTitle(trimmed)
+    if (trimmed === savedTitleRef.current) return
+    try {
+      await updateWordSetTitle(wordSetId, trimmed)
+      savedTitleRef.current = trimmed
+      setTitleError('')
+    } catch {
+      setWordSetTitle(savedTitleRef.current)
+      setTitleError('이름을 저장하지 못했어요. 잠시 후 다시 시도해주세요.')
+    }
+  }
+
   function startQuiz() {
     const count = questionCount === ALL_WORDS ? undefined : questionCount
     startRound(allWords, 1, count)
@@ -194,7 +231,7 @@ export function Quiz() {
   }
 
   if (phase === 'loading') {
-    return <div className="flex min-h-svh items-center justify-center bg-bg text-ink-muted">불러오는 중...</div>
+    return <Loading screen />
   }
 
   if (phase === 'nowords') {
@@ -233,10 +270,25 @@ export function Quiz() {
 
         <div className="flex flex-1 flex-col px-[22px] py-5">
           <div className="rounded-[22px] border border-border bg-surface p-5">
-            <div className="text-[19px] font-extrabold">{wordSetTitle}</div>
-            <p className="m-0 mt-1 text-[13px] text-ink-muted">
+            {wordSetId === null ? (
+              <div className="text-[19px] font-extrabold">{wordSetTitle}</div>
+            ) : (
+              <label className="flex items-center gap-2">
+                <input
+                  value={wordSetTitle}
+                  onChange={(e) => setWordSetTitle(e.target.value)}
+                  onBlur={saveTitle}
+                  onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+                  aria-label="단어장 이름"
+                  className="min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-1 py-0.5 text-[19px] font-extrabold outline-none focus:border-primary"
+                />
+                <PencilIcon width={16} height={16} className="flex-none text-ink-muted" />
+              </label>
+            )}
+            <p className="m-0 mt-1 px-1 text-[13px] text-ink-muted">
               단어 {total}개 중 {effectiveCount}문제를 풀어요
             </p>
+            {titleError && <p className="m-0 mt-1.5 px-1 text-[12.5px] font-semibold text-error">{titleError}</p>}
           </div>
 
           <OptionGroup
@@ -249,6 +301,7 @@ export function Quiz() {
             ]}
           />
           <OptionGroup label="시험 유형" value={mode} onChange={setMode} options={MODE_OPTIONS} />
+          <OptionGroup label="문제 순서" value={order} onChange={setOrder} options={ORDER_OPTIONS} />
 
           <div className="flex-1" />
           <button
@@ -445,7 +498,7 @@ function SpellingQuestion({ question, answer, setAnswer, feedback, speak, speaki
           {word.term.split('').map((ch, i) => (
             <div
               key={i}
-              className="flex h-9 w-[30px] items-center justify-center border-b-[3px] font-display text-lg font-bold"
+              className="flex h-10 w-[32px] items-center justify-center border-b-[3px] font-display text-[21px] font-bold"
               style={{ borderColor: i === 0 ? 'var(--color-primary)' : 'var(--color-border)' }}
             >
               {i === 0 ? ch : ''}
@@ -461,7 +514,7 @@ function SpellingQuestion({ question, answer, setAnswer, feedback, speak, speaki
           disabled={feedback !== 'idle'}
           placeholder="정답을 입력하세요"
           autoFocus
-          className="w-full rounded-2xl border-[1.5px] border-border bg-surface p-3.5 text-center font-display text-xl outline-none focus:border-primary"
+          className="w-full rounded-2xl border-[1.5px] border-border bg-surface p-3.5 text-center font-display text-[23px] outline-none focus:border-primary"
         />
       </div>
 
@@ -487,7 +540,7 @@ function MeaningQuestion({ question, answer, setAnswer, feedback, speak, speakin
           </span>
         )}
         <div className="mt-3.5 flex items-center justify-center gap-2.5">
-          <div className="font-display text-[27px] font-bold">{word.term}</div>
+          <div className="font-display text-[33px] font-bold leading-tight">{word.term}</div>
           <button
             type="button"
             aria-label="발음 듣기"
@@ -634,7 +687,7 @@ function RoundSummary({
           {Array.from(new Map(result.wrongAnswers.map((a) => [a.wordId, a])).values()).map((a) => (
             <div key={a.wordId} className="flex items-center gap-2.5 rounded-2xl border border-border bg-surface p-3">
               <div className="flex-1">
-                <div className="font-display text-[15px] font-bold">
+                <div className="font-display text-[18px] font-bold">
                   {a.term} <span className="font-kr text-[13px] font-normal text-ink-muted">= {a.meaning}</span>
                 </div>
                 <div className="mt-1 text-[12.5px] text-error">

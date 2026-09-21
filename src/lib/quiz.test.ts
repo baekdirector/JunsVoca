@@ -31,6 +31,19 @@ describe('generateQuestions', () => {
     expect(generateQuestions(words, { count: 10 })).toHaveLength(3)
   })
 
+  it('shuffle을 끄면 단어장 순서대로 앞에서부터 출제한다', () => {
+    const questions = generateQuestions(words, { shuffle: false, count: 2 })
+    expect(questions.map((q) => q.word.id)).toEqual([1, 2])
+    expect(generateQuestions(words, { shuffle: false }).map((q) => q.word.id)).toEqual([1, 2, 3])
+  })
+
+  it('shuffle을 켜면(기본) 모든 단어가 한 번씩, 순서만 무작위다', () => {
+    const many = Array.from({ length: 30 }, (_, i) => word(i + 1, `w${i}`, '뜻'))
+    const ids = generateQuestions(many).map((q) => q.word.id)
+    expect([...ids].sort((a, b) => a - b)).toEqual(many.map((w) => w.id))
+    expect(ids).not.toEqual(many.map((w) => w.id))
+  })
+
   it('mode를 지정하면 모든 문제가 그 유형이다', () => {
     expect(generateQuestions(words, { mode: 'spelling' }).every((q) => q.type === 'spelling')).toBe(true)
     expect(generateQuestions(words, { mode: 'meaning' }).every((q) => q.type === 'meaning')).toBe(true)

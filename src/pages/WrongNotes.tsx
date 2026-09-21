@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { BottomNav } from '../components/BottomNav'
+import { Loading } from '../components/Loading'
 import { SpeakButton } from '../components/SpeakButton'
 import { getWrongNotes, setWrongNoteResolved, type WrongNote } from '../lib/db'
 import { formatDate } from '../lib/quiz'
@@ -60,7 +61,7 @@ export function WrongNotes() {
 
         <div className="mt-4 flex flex-col gap-2.5">
           {notes === null ? (
-            <p className="py-8 text-center text-ink-muted">불러오는 중...</p>
+            <Loading />
           ) : shown.length === 0 ? (
             <p className="py-8 text-center text-[13.5px] text-ink-muted">
               {tab === 'active'
@@ -72,7 +73,7 @@ export function WrongNotes() {
               <div key={n.wordId} className="flex items-center gap-3 rounded-2xl border border-border bg-surface p-3.5">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="break-words font-display text-[16px] font-bold">{n.term}</span>
+                    <span className="break-words font-display text-[19px] font-bold">{n.term}</span>
                     {n.isIdiom && (
                       <span className="flex-none rounded-md bg-accent-tint px-1.5 py-0.5 text-[10px] font-bold text-accent-dark">
                         숙어

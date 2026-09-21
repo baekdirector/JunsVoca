@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeftIcon, PlusIcon, TrashIcon } from '../components/icons'
+import { Loading } from '../components/Loading'
 import { SpeakButton } from '../components/SpeakButton'
 import {
   addWord as dbAddWord,
@@ -32,13 +33,13 @@ function defaultTitle() {
 
 export function WordReview() {
   const { id } = useParams<{ id: string }>()
-  const location = useLocation() as { state?: { words?: ParsedWord[]; imagePreviewUrl?: string | null } }
+  const location = useLocation() as { state?: { words?: ParsedWord[]; title?: string } }
   const navigate = useNavigate()
 
   const wordSetId = id ? Number(id) : undefined
   const isExisting = wordSetId !== undefined
 
-  const [title, setTitle] = useState(defaultTitle())
+  const [title, setTitle] = useState(() => location.state?.title || defaultTitle())
   const [rows, setRows] = useState<Row[]>(() =>
     isExisting
       ? []
@@ -109,7 +110,7 @@ export function WordReview() {
   }
 
   if (!loaded) {
-    return <div className="flex min-h-svh items-center justify-center bg-bg text-ink-muted">불러오는 중...</div>
+    return <Loading screen />
   }
 
   return (
@@ -153,7 +154,7 @@ export function WordReview() {
                   placeholder="영어 단어"
                   onChange={(e) => patchRow(row.key, { term: e.target.value })}
                   onBlur={() => commitRow(row)}
-                  className="min-w-0 flex-1 rounded-lg border border-border px-2 py-1.5 font-display text-[15px] font-bold outline-none focus:border-primary"
+                  className="min-w-0 flex-1 rounded-lg border border-border px-2 py-1.5 font-display text-[17.5px] font-bold outline-none focus:border-primary"
                 />
                 {isIdiom(row.term) && (
                   <span className="flex-none rounded-md bg-accent-tint px-1.5 py-0.5 text-[10px] font-bold text-accent-dark">

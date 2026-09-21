@@ -25,19 +25,21 @@ export interface GenerateOptions {
   /** 출제할 문제 수. 생략하면 전체 단어. */
   count?: number
   mode?: QuizMode
+  /** true(기본)면 무작위 순서, false면 단어장에 적힌 순서대로. */
+  shuffle?: boolean
 }
 
-/** Picks `count` random words (all by default), one question each, order shuffled. */
+/** Picks `count` words (all by default), one question each. Random order unless `shuffle` is false. */
 export function generateQuestions(
   words: QuizWord[],
-  { count, mode = 'mixed' }: GenerateOptions = {},
+  { count, mode = 'mixed', shuffle: shuffled = true }: GenerateOptions = {},
 ): Question[] {
-  const picked = count === undefined ? words : shuffle(words).slice(0, Math.max(0, count))
-  const questions: Question[] = picked.map((word) => ({
+  const ordered = shuffled ? shuffle(words) : words
+  const picked = count === undefined ? ordered : ordered.slice(0, Math.max(0, count))
+  return picked.map((word) => ({
     word,
     type: mode === 'mixed' ? (Math.random() < 0.5 ? 'spelling' : 'meaning') : mode,
   }))
-  return shuffle(questions)
 }
 
 export function normalizeAnswer(s: string): string {

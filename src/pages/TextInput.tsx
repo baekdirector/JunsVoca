@@ -10,6 +10,11 @@ const PLACEHOLDER = `1 festival 축제
 3 celebrate 기념하다
 4 flea market 벼룩시장`
 
+function defaultTitle() {
+  const d = new Date()
+  return `${d.getMonth() + 1}월 ${d.getDate()}일 단어장`
+}
+
 function loadDraft(): string {
   try {
     return localStorage.getItem(DRAFT_KEY) ?? ''
@@ -30,6 +35,7 @@ function saveDraft(text: string) {
 export function TextInput() {
   const navigate = useNavigate()
   const [text, setText] = useState(loadDraft)
+  const [title, setTitle] = useState(defaultTitle)
 
   const { words, skipped } = useMemo(() => parseWordsDetailed(text), [text])
 
@@ -40,7 +46,7 @@ export function TextInput() {
 
   function goToReview() {
     saveDraft('')
-    navigate('/wordsets/review', { state: { words } })
+    navigate('/wordsets/review', { state: { words, title: title.trim() || defaultTitle() } })
   }
 
   return (
@@ -58,6 +64,16 @@ export function TextInput() {
       </div>
 
       <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-[22px] py-5">
+        <label className="block">
+          <span className="text-[13px] font-bold text-ink-muted">단어장 이름</span>
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder={defaultTitle()}
+            className="mt-1.5 block w-full rounded-2xl border-[1.5px] border-border bg-surface p-3.5 text-[16px] font-bold outline-none focus:border-primary"
+          />
+        </label>
+
         <div>
           <p className="m-0 text-[13px] leading-relaxed text-ink-muted">
             한 줄에 단어 하나씩 <b className="text-ink">번호 · 영단어 · 뜻</b> 순서로 입력하세요.
@@ -92,7 +108,7 @@ export function TextInput() {
                   className="grid grid-cols-[1.5rem_minmax(0,1fr)_minmax(0,1fr)] items-baseline gap-2 border-b border-border px-3 py-2 last:border-b-0"
                 >
                   <span className="text-xs text-ink-muted">{i + 1}</span>
-                  <span className="break-words font-display text-[14.5px] font-bold">
+                  <span className="break-words font-display text-[16.5px] font-bold">
                     {w.term}
                     {w.isIdiom && (
                       <span className="ml-1.5 rounded-md bg-accent-tint px-1.5 py-0.5 align-middle font-kr text-[10px] font-bold text-accent-dark">
