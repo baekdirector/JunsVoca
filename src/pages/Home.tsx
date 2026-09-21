@@ -1,0 +1,116 @@
+import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { BottomNav } from '../components/BottomNav'
+import { BookIcon, CameraIcon, ChartIcon, ChevronRightIcon, CheckCircleIcon, StarIcon } from '../components/icons'
+import { getHomeStats, getLatestWordSet, type HomeStats } from '../lib/db'
+
+function todayLabel() {
+  const d = new Date()
+  const days = ['일', '월', '화', '수', '목', '금', '토']
+  return `${d.getMonth() + 1}월 ${d.getDate()}일 ${days[d.getDay()]}요일`
+}
+
+export function Home() {
+  const [stats, setStats] = useState<HomeStats | null>(null)
+  const [latestWordSetId, setLatestWordSetId] = useState<number | null>(null)
+
+  useEffect(() => {
+    getHomeStats().then(setStats)
+    getLatestWordSet().then((s) => setLatestWordSetId(s?.id ?? null))
+  }, [])
+
+  return (
+    <div className="flex min-h-svh flex-col bg-bg">
+      <div className="flex flex-1 flex-col px-[22px] pb-6">
+        <div className="flex items-center justify-between pt-5">
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-primary">
+              <span className="font-display text-[17px] font-bold text-white">J</span>
+            </div>
+            <span className="font-display text-[19px] font-bold">JunsVoca</span>
+          </div>
+          <Link
+            to="/parent"
+            aria-label="부모 결과 리포트 보기"
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-surface text-primary"
+          >
+            <ChartIcon width={20} height={20} />
+          </Link>
+        </div>
+
+        <div className="pt-6">
+          <p className="m-0 text-[13px] text-ink-muted">{todayLabel()}</p>
+          <h1 className="mt-1.5 text-[27px] font-extrabold leading-snug">
+            안녕!
+            <br />
+            오늘도 단어 정복하러 가볼까?
+          </h1>
+        </div>
+
+        <div className="flex gap-2.5 pt-5">
+          <StatChip icon={<StarIcon width={14} height={14} className="text-gold" />} label="연속 학습" value={`${stats?.streakDays ?? 0}일`} />
+          <StatChip icon={<CheckCircleIcon width={14} height={14} className="text-success" />} label="주간 정답률" value={`${stats?.weeklyAccuracy ?? 0}%`} />
+          <StatChip icon={<BookIcon width={14} height={14} className="text-primary" />} label="학습 단어" value={`${stats?.totalWords ?? 0}개`} />
+        </div>
+
+        <div className="flex flex-col gap-3 pt-6">
+          <Link
+            to="/capture"
+            className="flex items-center gap-3.5 rounded-[20px] bg-primary p-4.5 shadow-[0_8px_20px_-10px_rgba(20,79,76,0.55)]"
+          >
+            <div className="flex h-11 w-11 flex-none items-center justify-center rounded-2xl bg-white/20">
+              <CameraIcon width={22} height={22} className="text-white" />
+            </div>
+            <div className="flex-1">
+              <div className="text-[16px] font-bold text-white">프린트물 촬영하기</div>
+              <div className="mt-0.5 text-[12.5px] text-white/85">새 단어 인식해서 단어장 만들기</div>
+            </div>
+            <ChevronRightIcon width={18} height={18} className="text-white" />
+          </Link>
+
+          <Link
+            to={latestWordSetId ? `/quiz/${latestWordSetId}` : '/capture'}
+            className="flex items-center gap-3.5 rounded-[20px] border border-border bg-surface p-4.5"
+          >
+            <div className="flex h-11 w-11 flex-none items-center justify-center rounded-2xl bg-primary-tint">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className="text-primary">
+                <path d="M8 5l11 7-11 7Z" />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <div className="text-[16px] font-bold">오늘의 테스트 시작하기</div>
+              <div className="mt-0.5 text-[12.5px] text-ink-muted">
+                {latestWordSetId ? '저장된 단어장으로 바로 퀴즈 풀기' : '먼저 단어장을 만들어주세요'}
+              </div>
+            </div>
+            <ChevronRightIcon width={18} height={18} className="text-ink-muted" />
+          </Link>
+
+          <Link to="/wordsets" className="flex items-center gap-3.5 rounded-[20px] border border-border bg-surface p-4.5">
+            <div className="flex h-11 w-11 flex-none items-center justify-center rounded-2xl bg-accent-tint">
+              <BookIcon width={20} height={20} className="text-accent-dark" strokeWidth={1.8} />
+            </div>
+            <div className="flex-1">
+              <div className="text-[16px] font-bold">내 단어장 보기</div>
+              <div className="mt-0.5 text-[12.5px] text-ink-muted">저장된 단어장 확인하고 수정하기</div>
+            </div>
+            <ChevronRightIcon width={18} height={18} className="text-ink-muted" />
+          </Link>
+        </div>
+      </div>
+      <BottomNav />
+    </div>
+  )
+}
+
+function StatChip({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+  return (
+    <div className="flex-1 rounded-[14px] border border-border bg-surface px-3 py-2.5">
+      <div className="flex items-center gap-1 whitespace-nowrap text-[11.5px] text-ink-muted">
+        {icon}
+        {label}
+      </div>
+      <div className="mt-0.5 text-[20px] font-extrabold">{value}</div>
+    </div>
+  )
+}
