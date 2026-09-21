@@ -2,19 +2,13 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { BookIcon, ChevronRightIcon, PlusIcon } from '../components/icons'
 import { BottomNav } from '../components/BottomNav'
-import { db, getWordSets, type WordSetRecord } from '../lib/db'
+import { getWordSets, type WordSetRecord } from '../lib/db'
 
 export function WordSets() {
   const [sets, setSets] = useState<Array<WordSetRecord & { count: number }> | null>(null)
 
   useEffect(() => {
-    ;(async () => {
-      const list = await getWordSets()
-      const withCounts = await Promise.all(
-        list.map(async (s) => ({ ...s, count: await db.words.where('wordSetId').equals(s.id!).count() })),
-      )
-      setSets(withCounts)
-    })()
+    getWordSets().then(setSets)
   }, [])
 
   return (

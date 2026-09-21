@@ -1,0 +1,269 @@
+import { Router } from 'express'
+import { pool } from './db.js'
+
+export const router = Router()
+
+function isSameDay(a, b) {
+  const da = new Date(a)
+  const db_ = new Date(b)
+  return da.getFullYear() === db_.getFullYear() && da.getMonth() === db_.getMonth() && da.getDate() === db_.getDate()
+}
+
+/** Groups quiz_sessions rows by groupId into one attempt summary each, same shape as the old Dexie-backed getAttempts(). */
+function summarizeAttempts(sessions) {
+  const byGroup = new Map()
+  for (const s of sessions) {
+    const list = byGroup.get(s.groupId) ?? []
+    list.push(s)
+    byGroup.set(s.groupId, list)
+  }
+  const attempts = []
+  for (const [groupId, rounds] of byGroup) {
+    rounds.sort((a, b) => a.round - b.round)
+    const first = rounds[0]
+    const last = rounds[rounds.length - 1]
+    attempts.push({
+      groupId,
+      wordSetId: first.wordSetId,
+      wordSetTitle: first.wordSetTitle,
+      firstRoundSessionId: first.id,
+      startedAt: first.startedAt,
+      lastFinishedAt: last.finishedAt,
+      totalQuestions: first.totalQuestions,
+      correctCount: first.correctCount,
+      wrongCount: first.wrongCount,
+      accuracy: first.totalQuestions > 0 ? Math.round((first.correctCount / first.totalQuestions) * 100) : 0,
+      totalDurationMs: rounds.reduce((sum, r) => sum + r.durationMs, 0),
+      roundsTaken: rounds.length,
+      mastered: rounds.some((r) => r.wrongCount === 0),
+    })
+  }
+  attempts.sort((a, b) => b.startedAt - a.startedAt)
+  return attempts
+}
+
+async function fetchAllSessions() {
+  const { rows } = await pool.query(`
+    SELECT id, group_id AS "groupId", word_set_id AS "wordSetId", word_set_title AS "wordSetTitle",
+           round, started_at AS "startedAt", finished_at AS "finishedAt", duration_ms AS "durationMs",
+           total_questions AS "totalQuestions", correct_count AS "correctCount", wrong_count AS "wrongCount"
+    FROM quiz_sessions
+    ORDER BY started_at DESC
+  `)
+  return rows
+}
+
+// ---- word sets ----
+
+router.get('/wordsets', async (_req, res) => {
+  const { rows } = await pool.query(`
+    SELECT ws.id, ws.title, ws.created_at AS "createdAt", COUNT(w.id)::int AS count
+    FROM word_sets ws
+    LEFT JOIN words w ON w.word_set_id = ws.id
+    GROUP BY ws.id
+    ORDER BY ws.created_at DESC
+  `)
+  res.json(rows)
+})
+
+router.get('/wordsets/latest', async (_req, res) => {
+  const { rows } = await pool.query(
+    `SELECT id, title, created_at AS "createdAt" FROM word_sets ORDER BY created_at DESC LIMIT 1`,
+  )
+  res.json(rows[0] ?? null)
+})
+
+router.get('/wordsets/:id', async (req, res) => {
+  const { rows } = await pool.query(`SELECT id, title, created_at AS "createdAt" FROM word_sets WHERE id = $1`, [
+    req.params.id,
+  ])
+  if (!rows[0]) return res.status(404).json({ error: 'not found' })
+  res.json(rows[0])
+})
+
+router.get('/wordsets/:id/words', async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT id, word_set_id AS "wordSetId", term, meaning, is_idiom AS "isIdiom", part_of_speech AS "partOfSpeech"
+     FROM words WHERE word_set_id = $1 ORDER BY id`,
+    [req.params.id],
+  )
+  res.json(rows)
+})
+
+router.post('/wordsets', async (req, res) => {
+  const { title, words } = req.body
+  if (!title || !Array.isArray(words)) return res.status(400).json({ error: 'title and words[] required' })
+
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    const {
+      rows: [wordSet],
+    } = await client.query(`INSERT INTO word_sets (title, created_at) VALUES ($1, $2) RETURNING id`, [
+      title,
+      Date.now(),
+    ])
+    for (const w of words) {
+      await client.query(
+        `INSERT INTO words (word_set_id, term, meaning, is_idiom, part_of_speech) VALUES ($1, $2, $3, $4, $5)`,
+        [wordSet.id, w.term, w.meaning, !!w.isIdiom, w.partOfSpeech ?? null],
+      )
+    }
+    await client.query('COMMIT')
+    res.json({ id: wordSet.id })
+  } catch (err) {
+    await client.query('ROLLBACK')
+    throw err
+  } finally {
+    client.release()
+  }
+})
+
+router.patch('/wordsets/:id', async (req, res) => {
+  const { title } = req.body
+  await pool.query(`UPDATE word_sets SET title = $1 WHERE id = $2`, [title, req.params.id])
+  res.json({ ok: true })
+})
+
+// ---- words ----
+
+router.post('/words', async (req, res) => {
+  const { wordSetId, term, meaning, isIdiom, partOfSpeech } = req.body
+  const {
+    rows: [row],
+  } = await pool.query(
+    `INSERT INTO words (word_set_id, term, meaning, is_idiom, part_of_speech) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+    [wordSetId, term ?? '', meaning ?? '', !!isIdiom, partOfSpeech ?? null],
+  )
+  res.json({ id: row.id })
+})
+
+router.patch('/words/:id', async (req, res) => {
+  const { term, meaning, isIdiom, partOfSpeech } = req.body
+  await pool.query(
+    `UPDATE words SET
+       term = COALESCE($1, term),
+       meaning = COALESCE($2, meaning),
+       is_idiom = COALESCE($3, is_idiom),
+       part_of_speech = COALESCE($4, part_of_speech)
+     WHERE id = $5`,
+    [term, meaning, isIdiom, partOfSpeech, req.params.id],
+  )
+  res.json({ ok: true })
+})
+
+router.delete('/words/:id', async (req, res) => {
+  await pool.query(`DELETE FROM words WHERE id = $1`, [req.params.id])
+  res.json({ ok: true })
+})
+
+// ---- quiz rounds ----
+
+router.post('/quiz-rounds', async (req, res) => {
+  const { groupId, wordSetId, wordSetTitle, round, startedAt, finishedAt, answers } = req.body
+  if (!Array.isArray(answers)) return res.status(400).json({ error: 'answers[] required' })
+
+  const correctCount = answers.filter((a) => a.correct).length
+  const wrongCount = answers.length - correctCount
+
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    const {
+      rows: [session],
+    } = await client.query(
+      `INSERT INTO quiz_sessions
+         (group_id, word_set_id, word_set_title, round, started_at, finished_at, duration_ms, total_questions, correct_count, wrong_count)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+      [groupId, wordSetId, wordSetTitle, round, startedAt, finishedAt, finishedAt - startedAt, answers.length, correctCount, wrongCount],
+    )
+    for (const a of answers) {
+      await client.query(
+        `INSERT INTO quiz_answers (session_id, word_id, question_type, term, meaning, correct_answer, user_answer, correct)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [session.id, a.wordId, a.questionType, a.term, a.meaning, a.correctAnswer, a.userAnswer, a.correct],
+      )
+    }
+    await client.query('COMMIT')
+    res.json({ sessionId: session.id })
+  } catch (err) {
+    await client.query('ROLLBACK')
+    throw err
+  } finally {
+    client.release()
+  }
+})
+
+// ---- parent dashboard ----
+
+router.get('/attempts', async (_req, res) => {
+  res.json(summarizeAttempts(await fetchAllSessions()))
+})
+
+router.get('/attempts/:groupId', async (req, res) => {
+  const { rows: rounds } = await pool.query(
+    `SELECT id, group_id AS "groupId", word_set_id AS "wordSetId", word_set_title AS "wordSetTitle",
+            round, started_at AS "startedAt", finished_at AS "finishedAt", duration_ms AS "durationMs",
+            total_questions AS "totalQuestions", correct_count AS "correctCount", wrong_count AS "wrongCount"
+     FROM quiz_sessions WHERE group_id = $1 ORDER BY round`,
+    [req.params.groupId],
+  )
+  const sessionIds = rounds.map((r) => r.id)
+  const { rows: answers } =
+    sessionIds.length === 0
+      ? { rows: [] }
+      : await pool.query(
+          `SELECT id, session_id AS "sessionId", word_id AS "wordId", question_type AS "questionType",
+                  term, meaning, correct_answer AS "correctAnswer", user_answer AS "userAnswer", correct
+           FROM quiz_answers WHERE session_id = ANY($1::int[])`,
+          [sessionIds],
+        )
+  res.json({ rounds, answers })
+})
+
+router.get('/missed-words', async (req, res) => {
+  const limit = Number(req.query.limit) || 5
+  const { rows: wrongAnswers } = await pool.query(
+    `SELECT term, meaning FROM quiz_answers WHERE correct = false`,
+  )
+  const counts = new Map()
+  for (const a of wrongAnswers) {
+    const entry = counts.get(a.term) ?? { term: a.term, meaning: a.meaning, wrong: 0 }
+    entry.wrong += 1
+    counts.set(a.term, entry)
+  }
+  const top = Array.from(counts.values())
+    .sort((a, b) => b.wrong - a.wrong)
+    .slice(0, limit)
+  res.json(top)
+})
+
+router.get('/home-stats', async (_req, res) => {
+  const {
+    rows: [{ count: totalWords }],
+  } = await pool.query(`SELECT COUNT(*)::int AS count FROM words`)
+  const attempts = summarizeAttempts(await fetchAllSessions())
+
+  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
+  const recent = attempts.filter((a) => a.startedAt >= weekAgo)
+  const weeklyAccuracy =
+    recent.length > 0 ? Math.round(recent.reduce((sum, a) => sum + a.accuracy, 0) / recent.length) : 0
+
+  let streakDays = 0
+  if (attempts.length > 0) {
+    const days = Array.from(new Set(attempts.map((a) => new Date(a.startedAt).toDateString())))
+      .map((d) => new Date(d).getTime())
+      .sort((a, b) => b - a)
+    let cursor = Date.now()
+    for (const day of days) {
+      if (isSameDay(day, cursor) || isSameDay(day, cursor - 24 * 60 * 60 * 1000)) {
+        streakDays += 1
+        cursor = day
+      } else {
+        break
+      }
+    }
+  }
+
+  res.json({ totalWords, totalAttempts: attempts.length, weeklyAccuracy, streakDays })
+})

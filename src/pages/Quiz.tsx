@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { CheckCircleIcon, SpeakerIcon, StarIcon, XCircleIcon, XIcon } from '../components/icons'
 import { useSpeak } from '../lib/useSpeak'
-import { db, getWordsBySet, recordQuizRound, type QuizAnswerRecord } from '../lib/db'
+import { getWordSet, getWordsBySet, recordQuizRound, type QuizAnswerRecord } from '../lib/db'
 import { checkAnswer, formatDuration, generateQuestions, type Question, type QuizWord } from '../lib/quiz'
 
 type Phase = 'loading' | 'nowords' | 'asking' | 'round-summary'
@@ -42,7 +42,7 @@ export function Quiz() {
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      const set = await db.wordSets.get(wordSetId)
+      const set = await getWordSet(wordSetId)
       const words = await getWordsBySet(wordSetId)
       if (cancelled) return
       if (!set || words.length === 0) {

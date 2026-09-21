@@ -3,11 +3,13 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeftIcon, PlusIcon, TrashIcon } from '../components/icons'
 import { SpeakButton } from '../components/SpeakButton'
 import {
+  addWord as dbAddWord,
   createWordSet,
-  db,
   deleteWord as dbDeleteWord,
-  updateWord as dbUpdateWord,
+  getWordSet,
   getWordsBySet,
+  updateWord as dbUpdateWord,
+  updateWordSetTitle,
   type WordRecord,
 } from '../lib/db'
 import type { ParsedWord } from '../lib/parseWords'
@@ -49,7 +51,7 @@ export function WordReview() {
     if (!isExisting) return
     let cancelled = false
     ;(async () => {
-      const set = await db.wordSets.get(wordSetId!)
+      const set = await getWordSet(wordSetId!)
       const words = await getWordsBySet(wordSetId!)
       if (cancelled) return
       setTitle(set?.title ?? defaultTitle())
@@ -86,7 +88,7 @@ export function WordReview() {
 
   async function addRow() {
     if (isExisting) {
-      const newId = await db.words.add({ wordSetId: wordSetId!, term: '', meaning: '', isIdiom: false })
+      const newId = await dbAddWord({ wordSetId: wordSetId!, term: '', meaning: '', isIdiom: false })
       setRows((prev) => [...prev, { key: `db-${newId}`, id: newId, term: '', meaning: '' }])
     } else {
       setRows((prev) => [...prev, { key: `new-${Date.now()}`, term: '', meaning: '' }])
@@ -123,9 +125,9 @@ export function WordReview() {
         </button>
         <input
           value={title}
-          onChange={(e) => {
-            setTitle(e.target.value)
-            if (isExisting) db.wordSets.update(wordSetId!, { title: e.target.value })
+          onChange={(e) => setTitle(e.target.value)}
+          onBlur={() => {
+            if (isExisting) updateWordSetTitle(wordSetId!, title)
           }}
           className="m-0 flex-1 bg-transparent text-[17px] font-bold outline-none"
         />
