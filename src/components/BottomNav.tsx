@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { BookIcon, ChartIcon, HomeIcon } from './icons'
+import { BookIcon, ChartIcon, HomeIcon, XCircleIcon } from './icons'
 
 export function BottomNav() {
   const { pathname } = useLocation()
@@ -7,6 +7,7 @@ export function BottomNav() {
   const items = [
     { to: '/', label: '홈', icon: HomeIcon, active: pathname === '/' },
     { to: '/wordsets', label: '단어장', icon: BookIcon, active: pathname.startsWith('/wordsets') },
+    { to: '/wrong', label: '오답노트', icon: XCircleIcon, active: pathname.startsWith('/wrong') },
     { to: '/parent', label: '결과', icon: ChartIcon, active: pathname.startsWith('/parent') },
   ]
 

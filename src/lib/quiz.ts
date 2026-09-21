@@ -68,6 +68,28 @@ export function checkAnswer(question: Question, userAnswer: string): boolean {
   return tokens.some((t) => looseKey(t) === user || looseKey(withoutParentheses(t)) === user)
 }
 
+const DAY_LABELS = ['일', '월', '화', '수', '목', '금', '토']
+
+/** "9월 22일 (화)" */
+export function formatDate(ts: number): string {
+  const d = new Date(ts)
+  return `${d.getMonth() + 1}월 ${d.getDate()}일 (${DAY_LABELS[d.getDay()]})`
+}
+
+/** "오전 12:05" */
+export function formatTime(ts: number): string {
+  const d = new Date(ts)
+  const hour = d.getHours()
+  const period = hour < 12 ? '오전' : '오후'
+  const hour12 = hour % 12 === 0 ? 12 : hour % 12
+  return `${period} ${hour12}:${d.getMinutes().toString().padStart(2, '0')}`
+}
+
+/** "9월 22일 (화) 오전 12:05" */
+export function formatDateTime(ts: number): string {
+  return `${formatDate(ts)} ${formatTime(ts)}`
+}
+
 export function formatDuration(ms: number): string {
   const totalSeconds = Math.round(ms / 1000)
   const minutes = Math.floor(totalSeconds / 60)

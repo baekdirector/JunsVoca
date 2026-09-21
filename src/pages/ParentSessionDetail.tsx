@@ -2,13 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ArrowLeftIcon, CheckIcon, InfoIcon, XIcon } from '../components/icons'
 import { getAttemptDetail, type QuizAnswerRecord, type QuizSessionRecord } from '../lib/db'
-import { formatDuration } from '../lib/quiz'
-
-function formatDate(ts: number) {
-  const d = new Date(ts)
-  const days = ['일', '월', '화', '수', '목', '금', '토']
-  return `${d.getMonth() + 1}월 ${d.getDate()}일 (${days[d.getDay()]})`
-}
+import { formatDateTime, formatDuration } from '../lib/quiz'
 
 export function ParentSessionDetail() {
   const { groupId } = useParams<{ groupId: string }>()
@@ -59,7 +53,7 @@ export function ParentSessionDetail() {
       </div>
 
       <div className="px-5 pt-5 sm:px-10">
-        <h1 className="m-0 text-[22px] font-extrabold">{formatDate(firstRound.startedAt)} 테스트 결과</h1>
+        <h1 className="m-0 text-[22px] font-extrabold">{formatDateTime(firstRound.startedAt)} 테스트 결과</h1>
         <p className="mt-1.5 text-[13.5px] text-ink-muted">{firstRound.wordSetTitle}</p>
       </div>
 

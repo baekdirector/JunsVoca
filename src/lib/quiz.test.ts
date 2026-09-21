@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { checkAnswer, generateQuestions, type Question, type QuizWord } from './quiz'
+import {
+  checkAnswer,
+  formatDate,
+  formatDateTime,
+  formatTime,
+  generateQuestions,
+  type Question,
+  type QuizWord,
+} from './quiz'
 
 function word(id: number, term: string, meaning: string): QuizWord {
   return { id, wordSetId: 1, term, meaning, isIdiom: term.includes(' ') }
@@ -56,5 +64,14 @@ describe('checkAnswer', () => {
 
   it('빈 답은 오답이다', () => {
     expect(checkAnswer(q(words[0], 'spelling'), '   ')).toBe(false)
+  })
+})
+
+describe('날짜 표시', () => {
+  it('날짜와 시간을 한국어로 표시한다', () => {
+    const ts = new Date(2026, 8, 22, 0, 5).getTime()
+    expect(formatDate(ts)).toBe('9월 22일 (화)')
+    expect(formatTime(ts)).toBe('오전 12:05')
+    expect(formatDateTime(new Date(2026, 8, 22, 15, 30).getTime())).toBe('9월 22일 (화) 오후 3:30')
   })
 })

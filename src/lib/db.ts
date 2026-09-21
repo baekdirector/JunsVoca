@@ -22,7 +22,8 @@ export type QuestionType = 'spelling' | 'meaning'
 export interface QuizSessionRecord {
   id: number
   groupId: string
-  wordSetId: number
+  /** 오답 노트 테스트처럼 특정 단어장에 속하지 않으면 null */
+  wordSetId: number | null
   wordSetTitle: string
   round: number
   startedAt: number
@@ -103,7 +104,7 @@ export function deleteWord(id: number): Promise<void> {
 
 export interface RecordRoundInput {
   groupId: string
-  wordSetId: number
+  wordSetId: number | null
   wordSetTitle: string
   round: number
   startedAt: number
@@ -121,7 +122,7 @@ export async function recordQuizRound(input: RecordRoundInput): Promise<number> 
 
 export interface AttemptSummary {
   groupId: string
-  wordSetId: number
+  wordSetId: number | null
   wordSetTitle: string
   firstRoundSessionId: number
   startedAt: number
@@ -152,6 +153,30 @@ export interface HomeStats {
   totalAttempts: number
   weeklyAccuracy: number
   streakDays: number
+  /** 오답 노트에 남아 있는(아직 못 외운) 단어 수 */
+  wrongNoteCount: number
+}
+
+/** 틀린 적이 있는 단어. resolvedAt이 null이면 아직 오답 노트에 남아 있는 단어. */
+export interface WrongNote {
+  wordId: number
+  term: string
+  meaning: string
+  isIdiom: boolean
+  partOfSpeech: string | null
+  wordSetId: number
+  wordSetTitle: string
+  wrongCount: number
+  lastWrongAt: number
+  resolvedAt: number | null
+}
+
+export function getWrongNotes(): Promise<WrongNote[]> {
+  return api('/wrong-notes')
+}
+
+export function setWrongNoteResolved(wordId: number, resolved: boolean): Promise<void> {
+  return api(`/wrong-notes/${wordId}`, { method: 'PATCH', body: JSON.stringify({ resolved }) })
 }
 
 export function getHomeStats(): Promise<HomeStats> {

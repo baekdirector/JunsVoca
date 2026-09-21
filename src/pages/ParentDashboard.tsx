@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeftIcon, ChevronRightIcon, ClockIcon, StarIcon, BookIcon, CheckCircleIcon } from '../components/icons'
 import { getAttempts, getMissedWordCounts, type AttemptSummary } from '../lib/db'
-import { formatDuration } from '../lib/quiz'
+import { formatDate, formatDuration, formatTime } from '../lib/quiz'
 
 // Frozen at module load -- the "this week" window doesn't need to tick live.
 const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
@@ -11,12 +11,6 @@ function accuracyClasses(accuracy: number) {
   if (accuracy >= 80) return 'bg-success-tint text-success'
   if (accuracy >= 60) return 'bg-warning-tint text-warning'
   return 'bg-error-tint text-error'
-}
-
-function formatDate(ts: number) {
-  const d = new Date(ts)
-  const days = ['일', '월', '화', '수', '목', '금', '토']
-  return `${d.getMonth() + 1}월 ${d.getDate()}일 (${days[d.getDay()]})`
 }
 
 export function ParentDashboard() {
@@ -84,7 +78,10 @@ export function ParentDashboard() {
                 <tbody>
                   {attempts.map((a) => (
                     <tr key={a.groupId} className="border-t border-border">
-                      <Td>{formatDate(a.startedAt)}</Td>
+                      <Td>
+                        {formatDate(a.startedAt)}
+                        <div className="text-[11.5px] text-ink-muted">{formatTime(a.startedAt)}</div>
+                      </Td>
                       <Td>{a.wordSetTitle}</Td>
                       <Td>{a.totalQuestions}</Td>
                       <Td>

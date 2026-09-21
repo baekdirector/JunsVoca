@@ -55,9 +55,40 @@ export async function migrate() {
       correct BOOLEAN NOT NULL
     );
 
+    -- 오답 노트: 틀린 적이 있는 단어 하나당 한 줄. resolved_at이 NULL이면 아직 노트에 남아 있는 단어.
+    CREATE TABLE IF NOT EXISTS wrong_notes (
+      word_id INTEGER PRIMARY KEY REFERENCES words(id) ON DELETE CASCADE,
+      wrong_count INTEGER NOT NULL DEFAULT 0,
+      last_wrong_at BIGINT NOT NULL,
+      last_wrong_group_id TEXT NOT NULL,
+      resolved_at BIGINT
+    );
+
+    -- 오답 노트 테스트는 여러 단어장의 단어가 섞이므로 특정 단어장에 속하지 않는다.
+    ALTER TABLE quiz_sessions ALTER COLUMN word_set_id DROP NOT NULL;
+
     CREATE INDEX IF NOT EXISTS idx_words_word_set_id ON words(word_set_id);
     CREATE INDEX IF NOT EXISTS idx_quiz_sessions_group_id ON quiz_sessions(group_id);
     CREATE INDEX IF NOT EXISTS idx_quiz_sessions_started_at ON quiz_sessions(started_at);
     CREATE INDEX IF NOT EXISTS idx_quiz_answers_session_id ON quiz_answers(session_id);
   `)
+
+  // 오답 노트 기능 이전의 틀린 기록으로 노트를 채운다. 이미 노트에 있는 단어는 건드리지 않는다.
+  // 실패해도 서버 시작을 막지 않는다.
+  try {
+    await pool.query(`
+      INSERT INTO wrong_notes (word_id, wrong_count, last_wrong_at, last_wrong_group_id)
+      SELECT a.word_id,
+             COUNT(*)::int,
+             MAX(s.finished_at),
+             (ARRAY_AGG(s.group_id ORDER BY s.finished_at DESC))[1]
+      FROM quiz_answers a
+      JOIN quiz_sessions s ON s.id = a.session_id
+      WHERE a.correct = false AND a.word_id IN (SELECT id FROM words)
+      GROUP BY a.word_id
+      ON CONFLICT (word_id) DO NOTHING
+    `)
+  } catch (err) {
+    console.error('wrong_notes backfill failed (continuing)', err)
+  }
 }

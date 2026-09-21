@@ -53,6 +53,32 @@ async function fetchAllSessions() {
   return rows
 }
 
+/**
+ * 오답 노트 갱신. 틀리면 노트에 담고(이미 있으면 횟수 +1, 다시 '남은 단어'로),
+ * 이후 다른 테스트의 첫 라운드에서 맞히면 '외운 단어'로 옮긴다.
+ * (같은 테스트의 복습 라운드에서 맞힌 것은 외운 것으로 치지 않는다.)
+ */
+async function updateWrongNote(client, answer, { groupId, round, finishedAt }) {
+  if (!answer.correct) {
+    await client.query(
+      `INSERT INTO wrong_notes (word_id, wrong_count, last_wrong_at, last_wrong_group_id)
+       SELECT id, 1, $2::bigint, $3::text FROM words WHERE id = $1
+       ON CONFLICT (word_id) DO UPDATE SET
+         wrong_count = wrong_notes.wrong_count + 1,
+         last_wrong_at = $2::bigint,
+         last_wrong_group_id = $3::text,
+         resolved_at = NULL`,
+      [answer.wordId, finishedAt, groupId],
+    )
+  } else if (round === 1) {
+    await client.query(
+      `UPDATE wrong_notes SET resolved_at = $2::bigint
+       WHERE word_id = $1 AND resolved_at IS NULL AND last_wrong_group_id <> $3::text`,
+      [answer.wordId, finishedAt, groupId],
+    )
+  }
+}
+
 // ---- word sets ----
 
 router.get('/wordsets', async (_req, res) => {
@@ -183,6 +209,7 @@ router.post('/quiz-rounds', async (req, res) => {
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
         [session.id, a.wordId, a.questionType, a.term, a.meaning, a.correctAnswer, a.userAnswer, a.correct],
       )
+      await updateWrongNote(client, a, { groupId, round, finishedAt })
     }
     await client.query('COMMIT')
     res.json({ sessionId: session.id })
@@ -238,6 +265,32 @@ router.get('/missed-words', async (req, res) => {
   res.json(top)
 })
 
+// ---- wrong notes ----
+
+router.get('/wrong-notes', async (_req, res) => {
+  const { rows } = await pool.query(`
+    SELECT n.word_id AS "wordId", w.term, w.meaning, w.is_idiom AS "isIdiom", w.part_of_speech AS "partOfSpeech",
+           w.word_set_id AS "wordSetId", ws.title AS "wordSetTitle",
+           n.wrong_count AS "wrongCount", n.last_wrong_at AS "lastWrongAt", n.resolved_at AS "resolvedAt"
+    FROM wrong_notes n
+    JOIN words w ON w.id = n.word_id
+    JOIN word_sets ws ON ws.id = w.word_set_id
+    ORDER BY n.last_wrong_at DESC
+  `)
+  res.json(rows)
+})
+
+router.patch('/wrong-notes/:wordId', async (req, res) => {
+  const resolved = req.body?.resolved
+  if (typeof resolved !== 'boolean') return res.status(400).json({ error: 'resolved (boolean) required' })
+  const { rowCount } = await pool.query(`UPDATE wrong_notes SET resolved_at = $2::bigint WHERE word_id = $1`, [
+    req.params.wordId,
+    resolved ? Date.now() : null,
+  ])
+  if (rowCount === 0) return res.status(404).json({ error: 'not found' })
+  res.json({ ok: true })
+})
+
 router.get('/home-stats', async (_req, res) => {
   const {
     rows: [{ count: totalWords }],
@@ -265,5 +318,9 @@ router.get('/home-stats', async (_req, res) => {
     }
   }
 
-  res.json({ totalWords, totalAttempts: attempts.length, weeklyAccuracy, streakDays })
+  const {
+    rows: [{ count: wrongNoteCount }],
+  } = await pool.query(`SELECT COUNT(*)::int AS count FROM wrong_notes WHERE resolved_at IS NULL`)
+
+  res.json({ totalWords, totalAttempts: attempts.length, weeklyAccuracy, streakDays, wrongNoteCount })
 })

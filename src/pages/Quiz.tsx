@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { CheckCircleIcon, SpeakerIcon, StarIcon, XCircleIcon, XIcon } from '../components/icons'
 import { useSpeak } from '../lib/useSpeak'
-import { getWordSet, getWordsBySet, recordQuizRound, type QuizAnswerRecord } from '../lib/db'
+import { getWordSet, getWordsBySet, getWrongNotes, recordQuizRound, type QuizAnswerRecord } from '../lib/db'
 import {
   checkAnswer,
+  formatDateTime,
   formatDuration,
   generateQuestions,
   type Question,
@@ -26,6 +27,9 @@ interface AnswerLog extends Omit<QuizAnswerRecord, 'id' | 'sessionId'> {}
 
 interface RoundResult {
   round: number
+  finishedAt: number
+  /** 이 테스트의 첫 라운드 결과 (복습 라운드 뒤에도 처음 성적을 보여주기 위해) */
+  firstRound: { correct: number; total: number }
   durationMs: number
   correctCount: number
   wrongCount: number
@@ -35,7 +39,8 @@ interface RoundResult {
 
 export function Quiz() {
   const { wordSetId: wordSetIdParam } = useParams<{ wordSetId: string }>()
-  const wordSetId = Number(wordSetIdParam)
+  // 단어장 id가 없으면(/wrong/quiz) 오답 노트에 남은 단어들로 보는 테스트
+  const wordSetId = wordSetIdParam ? Number(wordSetIdParam) : null
   const navigate = useNavigate()
 
   const [phase, setPhase] = useState<Phase>('loading')
@@ -54,6 +59,7 @@ export function Quiz() {
 
   const roundAnswersRef = useRef<AnswerLog[]>([])
   const roundStartedAtRef = useRef(0)
+  const firstRoundRef = useRef({ correct: 0, total: 0 })
   const [roundResult, setRoundResult] = useState<RoundResult | null>(null)
 
   const { speak, speakingTerm } = useSpeak()
@@ -61,15 +67,31 @@ export function Quiz() {
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      const set = await getWordSet(wordSetId)
-      const words = await getWordsBySet(wordSetId)
+      let title: string
+      let words: QuizWord[]
+      if (wordSetId === null) {
+        const notes = (await getWrongNotes()).filter((n) => n.resolvedAt === null)
+        title = '오답 노트'
+        words = notes.map((n) => ({
+          id: n.wordId,
+          wordSetId: n.wordSetId,
+          term: n.term,
+          meaning: n.meaning,
+          isIdiom: n.isIdiom,
+          partOfSpeech: n.partOfSpeech ?? undefined,
+        }))
+      } else {
+        const set = await getWordSet(wordSetId)
+        title = set?.title ?? ''
+        words = set ? await getWordsBySet(wordSetId) : []
+      }
       if (cancelled) return
-      if (!set || words.length === 0) {
+      if (words.length === 0) {
         setPhase('nowords')
         return
       }
-      setWordSetTitle(set.title)
-      setAllWords(words as QuizWord[])
+      setWordSetTitle(title)
+      setAllWords(words)
       setPhase('setup')
     })()
     return () => {
@@ -122,6 +144,8 @@ export function Quiz() {
     const correctCount = answers.filter((a) => a.correct).length
     const wrongAnswers = answers.filter((a) => !a.correct)
 
+    if (round === 1) firstRoundRef.current = { correct: correctCount, total: answers.length }
+
     await recordQuizRound({
       groupId,
       wordSetId,
@@ -134,6 +158,8 @@ export function Quiz() {
 
     setRoundResult({
       round,
+      finishedAt,
+      firstRound: firstRoundRef.current,
       durationMs: finishedAt - roundStartedAtRef.current,
       correctCount,
       wrongCount: wrongAnswers.length,
@@ -174,7 +200,9 @@ export function Quiz() {
   if (phase === 'nowords') {
     return (
       <div className="flex min-h-svh flex-col items-center justify-center gap-3 bg-bg px-6 text-center">
-        <p className="text-[15px] font-semibold text-ink">이 단어장에는 문제가 없어요.</p>
+        <p className="text-[15px] font-semibold text-ink">
+          {wordSetId === null ? '오답 노트가 비어 있어요. 잘하고 있어요!' : '이 단어장에는 문제가 없어요.'}
+        </p>
         <button
           type="button"
           onClick={() => navigate('/')}
@@ -242,6 +270,7 @@ export function Quiz() {
         result={roundResult}
         onRetry={retryWrong}
         onHome={() => navigate('/')}
+        onWrongNotes={() => navigate('/wrong')}
       />
     )
   }
@@ -517,15 +546,20 @@ function RoundSummary({
   result,
   onRetry,
   onHome,
+  onWrongNotes,
 }: {
   wordSetTitle: string
   result: RoundResult
   onRetry: () => void
   onHome: () => void
+  onWrongNotes: () => void
 }) {
   const { speak, speakingTerm } = useSpeak()
   const total = result.correctCount + result.wrongCount
   const accuracy = total > 0 ? Math.round((result.correctCount / total) * 100) : 0
+  const first = result.firstRound
+  const firstAccuracy = first.total > 0 ? Math.round((first.correct / first.total) * 100) : 0
+  const hadMistakes = first.correct < first.total
 
   return (
     <div className="flex min-h-svh flex-col bg-bg">
@@ -533,6 +567,9 @@ function RoundSummary({
         <span className="text-[13px] font-bold tracking-wide text-ink-muted">
           {result.round === 1 ? '테스트 완료!' : result.isFinal ? '복습 완료!' : '복습 라운드 결과'}
         </span>
+        <p className="m-0 mt-1 text-[12.5px] text-ink-muted">
+          {wordSetTitle} · {formatDateTime(result.finishedAt)}
+        </p>
 
         {result.isFinal ? (
           <div className="mx-auto mt-3.5 flex h-[132px] w-[132px] flex-col items-center justify-center rounded-full border-8 border-surface bg-success-tint">
@@ -545,6 +582,12 @@ function RoundSummary({
             </span>
             <span className="mt-0.5 text-[11.5px] text-ink-muted">정답률 {accuracy}%</span>
           </div>
+        )}
+
+        {result.round > 1 && (
+          <p className="m-0 mt-3 text-[13px] font-semibold text-ink-muted">
+            첫 시도 결과 {first.correct}/{first.total} · 정답률 {firstAccuracy}%
+          </p>
         )}
 
         <p className="mx-auto mt-4 max-w-[280px] whitespace-pre-line text-[15px] font-bold leading-relaxed">
@@ -625,6 +668,15 @@ function RoundSummary({
               다 맞힐 때까지 틀린 단어만 모아서 반복돼요
             </p>
           </>
+        )}
+        {hadMistakes && (
+          <button
+            type="button"
+            onClick={onWrongNotes}
+            className="rounded-[14px] border border-border p-3 text-center text-[14px] font-semibold text-accent-dark"
+          >
+            틀린 단어는 오답 노트에 저장됐어요 · 보러 가기
+          </button>
         )}
         <button
           type="button"

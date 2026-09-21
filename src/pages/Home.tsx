@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { BottomNav } from '../components/BottomNav'
-import { BookIcon, ChartIcon, ChevronRightIcon, CheckCircleIcon, PencilIcon, StarIcon } from '../components/icons'
+import { BookIcon, ChartIcon, ChevronRightIcon, CheckCircleIcon, PencilIcon, StarIcon, XCircleIcon } from '../components/icons'
 import { getHomeStats, getLatestWordSet, type HomeStats } from '../lib/db'
 
 function todayLabel() {
@@ -81,6 +81,21 @@ export function Home() {
               <div className="text-[16px] font-bold">오늘의 테스트 시작하기</div>
               <div className="mt-0.5 text-[12.5px] text-ink-muted">
                 {latestWordSetId ? '저장된 단어장으로 바로 퀴즈 풀기' : '먼저 단어장을 만들어주세요'}
+              </div>
+            </div>
+            <ChevronRightIcon width={18} height={18} className="text-ink-muted" />
+          </Link>
+
+          <Link to="/wrong" className="flex items-center gap-3.5 rounded-[20px] border border-border bg-surface p-4.5">
+            <div className="flex h-11 w-11 flex-none items-center justify-center rounded-2xl bg-error-tint">
+              <XCircleIcon width={20} height={20} className="text-error" strokeWidth={1.8} />
+            </div>
+            <div className="flex-1">
+              <div className="text-[16px] font-bold">오답 노트</div>
+              <div className="mt-0.5 text-[12.5px] text-ink-muted">
+                {stats && stats.wrongNoteCount > 0
+                  ? `다시 도전할 틀린 단어 ${stats.wrongNoteCount}개`
+                  : '틀린 단어가 자동으로 모여요'}
               </div>
             </div>
             <ChevronRightIcon width={18} height={18} className="text-ink-muted" />
