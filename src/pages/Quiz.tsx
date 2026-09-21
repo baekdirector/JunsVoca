@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { CheckCircleIcon, PencilIcon, SpeakerIcon, StarIcon, XCircleIcon, XIcon } from '../components/icons'
 import { Loading } from '../components/Loading'
 import { useSpeak } from '../lib/useSpeak'
@@ -25,7 +25,7 @@ type QuizOrder = 'shuffle' | 'ordered'
 
 type Phase = 'loading' | 'nowords' | 'setup' | 'asking' | 'round-summary'
 
-const COUNT_OPTIONS = [5, 10, 20] as const
+const COUNT_OPTIONS = [5, 10, 20, 50] as const
 const ALL_WORDS = 0
 const ORDER_OPTIONS: { value: QuizOrder; label: string }[] = [
   { value: 'shuffle', label: '섞기' },
@@ -51,10 +51,22 @@ interface RoundResult {
   isFinal: boolean
 }
 
+/** "5" 또는 "1,2,3" 같은 단어장 id 목록을 숫자 배열로. */
+function parseIds(raw: string): number[] {
+  return raw
+    .split(',')
+    .map((s) => Number(s))
+    .filter((n) => Number.isInteger(n) && n > 0)
+}
+
 export function Quiz() {
   const { wordSetId: wordSetIdParam } = useParams<{ wordSetId: string }>()
-  // 단어장 id가 없으면(/wrong/quiz) 오답 노트에 남은 단어들로 보는 테스트
-  const wordSetId = wordSetIdParam ? Number(wordSetIdParam) : null
+  const [searchParams] = useSearchParams()
+  // /quiz/5 (단어장 하나), /test/start?sets=1,2,3 (여러 단어장), /wrong/quiz (id 없음: 오답 노트 단어들)
+  const idsKey = wordSetIdParam ?? searchParams.get('sets') ?? ''
+  const wordSetIds = idsKey ? parseIds(idsKey) : null
+  // 단어장 하나만 고른 경우에만 값이 있다 (이름 편집, 기록의 단어장 연결에 사용)
+  const singleId = wordSetIds?.length === 1 ? wordSetIds[0] : null
   const navigate = useNavigate()
 
   const [phase, setPhase] = useState<Phase>('loading')
@@ -63,6 +75,7 @@ export function Quiz() {
   const [groupId] = useState(() => crypto.randomUUID())
 
   const [allWords, setAllWords] = useState<QuizWord[]>([])
+  const [setCount, setSetCount] = useState(1)
   const [questionCount, setQuestionCount] = useState<number>(ALL_WORDS)
   const [mode, setMode] = useState<QuizMode>('mixed')
   const [order, setOrder] = useState<QuizOrder>('shuffle')
@@ -86,7 +99,8 @@ export function Quiz() {
     ;(async () => {
       let title: string
       let words: QuizWord[]
-      if (wordSetId === null) {
+      let sets = 1
+      if (wordSetIds === null) {
         const notes = (await getWrongNotes()).filter((n) => n.resolvedAt === null)
         title = '오답 노트'
         words = notes.map((n) => ({
@@ -98,9 +112,20 @@ export function Quiz() {
           partOfSpeech: n.partOfSpeech ?? undefined,
         }))
       } else {
-        const set = await getWordSet(wordSetId)
-        title = set?.title ?? ''
-        words = set ? await getWordsBySet(wordSetId) : []
+        const loaded = await Promise.all(
+          wordSetIds.map(async (id) => {
+            try {
+              const [set, setWords] = await Promise.all([getWordSet(id), getWordsBySet(id)])
+              return set ? { title: set.title, words: setWords } : null
+            } catch {
+              return null // 삭제되었거나 불러오지 못한 단어장은 건너뛴다
+            }
+          }),
+        )
+        const found = loaded.filter((l) => l !== null)
+        sets = found.length
+        title = found.map((l) => l.title).join(' + ')
+        words = found.flatMap((l) => l.words)
       }
       if (cancelled) return
       if (words.length === 0) {
@@ -110,13 +135,14 @@ export function Quiz() {
       setWordSetTitle(title)
       savedTitleRef.current = title
       setAllWords(words)
+      setSetCount(sets)
       setPhase('setup')
     })()
     return () => {
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wordSetId])
+  }, [idsKey])
 
   function startRound(words: QuizWord[], roundNumber: number, count?: number) {
     setQuestions(generateQuestions(words, { count, mode, shuffle: order === 'shuffle' }))
@@ -166,7 +192,7 @@ export function Quiz() {
 
     await recordQuizRound({
       groupId,
-      wordSetId,
+      wordSetId: singleId,
       wordSetTitle,
       round,
       startedAt: roundStartedAtRef.current,
@@ -189,7 +215,7 @@ export function Quiz() {
 
   async function saveTitle() {
     const trimmed = wordSetTitle.trim()
-    if (wordSetId === null) return
+    if (singleId === null) return
     if (!trimmed) {
       setWordSetTitle(savedTitleRef.current)
       return
@@ -197,7 +223,7 @@ export function Quiz() {
     setWordSetTitle(trimmed)
     if (trimmed === savedTitleRef.current) return
     try {
-      await updateWordSetTitle(wordSetId, trimmed)
+      await updateWordSetTitle(singleId, trimmed)
       savedTitleRef.current = trimmed
       setTitleError('')
     } catch {
@@ -238,7 +264,7 @@ export function Quiz() {
     return (
       <div className="flex min-h-svh flex-col items-center justify-center gap-3 bg-bg px-6 text-center">
         <p className="text-[15px] font-semibold text-ink">
-          {wordSetId === null ? '오답 노트가 비어 있어요. 잘하고 있어요!' : '이 단어장에는 문제가 없어요.'}
+          {wordSetIds === null ? '오답 노트가 비어 있어요. 잘하고 있어요!' : '선택한 단어장에는 문제가 없어요.'}
         </p>
         <button
           type="button"
@@ -270,8 +296,8 @@ export function Quiz() {
 
         <div className="flex flex-1 flex-col px-[22px] py-5">
           <div className="rounded-[22px] border border-border bg-surface p-5">
-            {wordSetId === null ? (
-              <div className="text-[19px] font-extrabold">{wordSetTitle}</div>
+            {singleId === null ? (
+              <div className="break-words text-[19px] font-extrabold">{wordSetTitle}</div>
             ) : (
               <label className="flex items-center gap-2">
                 <input
@@ -286,7 +312,7 @@ export function Quiz() {
               </label>
             )}
             <p className="m-0 mt-1 px-1 text-[13px] text-ink-muted">
-              단어 {total}개 중 {effectiveCount}문제를 풀어요
+              {setCount > 1 && `단어장 ${setCount}개 · `}단어 {total}개 중 {effectiveCount}문제를 풀어요
             </p>
             {titleError && <p className="m-0 mt-1.5 px-1 text-[12.5px] font-semibold text-error">{titleError}</p>}
           </div>
@@ -432,7 +458,7 @@ function OptionGroup<T extends string | number>({
   return (
     <div className="mt-6">
       <div className="mb-2 text-[13px] font-bold text-ink-muted">{label}</div>
-      <div role="radiogroup" aria-label={label} className="flex gap-2">
+      <div role="radiogroup" aria-label={label} className="flex flex-wrap gap-2">
         {options.map((option) => {
           const selected = option.value === value
           return (
@@ -442,7 +468,7 @@ function OptionGroup<T extends string | number>({
               role="radio"
               aria-checked={selected}
               onClick={() => onChange(option.value)}
-              className={`min-w-0 flex-1 rounded-2xl border p-3 text-[14px] font-semibold ${
+              className={`min-w-[76px] flex-1 rounded-2xl border p-3 text-[14px] font-semibold ${
                 selected ? 'border-primary bg-primary text-white' : 'border-border bg-surface text-ink'
               }`}
             >

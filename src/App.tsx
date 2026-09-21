@@ -19,6 +19,7 @@ function App() {
         <Route path="/wordsets/review" element={<WordReview />} />
         <Route path="/wordsets/:id" element={<WordReview />} />
         <Route path="/test" element={<TestSelect />} />
+        <Route path="/test/start" element={<Quiz />} />
         <Route path="/quiz/:wordSetId" element={<Quiz />} />
         <Route path="/wrong" element={<WrongNotes />} />
         <Route path="/wrong/quiz" element={<Quiz />} />
