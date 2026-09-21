@@ -6,11 +6,24 @@ import { getWordSets } from '../lib/db'
 import { loadWordSetsCache, saveWordSetsCache, type WordSetItem } from '../lib/wordSetsCache'
 import { formatDate } from '../lib/quiz'
 
+type SortOrder = 'newest' | 'oldest'
+
+const SORT_KEY = 'junsvoca_testselect_sort'
+
+function loadSort(): SortOrder {
+  try {
+    return localStorage.getItem(SORT_KEY) === 'oldest' ? 'oldest' : 'newest'
+  } catch {
+    return 'newest'
+  }
+}
+
 /** 테스트할 단어장을 (여러 개도) 고르는 화면. 고르면 문제 수/유형을 정하는 테스트 설정 화면으로 간다. */
 export function TestSelect() {
   const navigate = useNavigate()
   const [sets, setSets] = useState<WordSetItem[] | null>(loadWordSetsCache)
   const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [sort, setSort] = useState<SortOrder>(loadSort)
 
   useEffect(() => {
     getWordSets()
@@ -24,6 +37,10 @@ export function TestSelect() {
   }, [])
 
   const allSelected = sets !== null && sets.length > 0 && sets.every((s) => selected.has(s.id))
+  const sortedSets = useMemo(() => {
+    const direction = sort === 'newest' ? -1 : 1
+    return [...(sets ?? [])].sort((a, b) => direction * (a.createdAt - b.createdAt || a.id - b.id))
+  }, [sets, sort])
   const selectedSets = useMemo(() => sets?.filter((s) => selected.has(s.id)) ?? [], [sets, selected])
   const selectedWordCount = selectedSets.reduce((sum, s) => sum + s.count, 0)
 
@@ -34,6 +51,15 @@ export function TestSelect() {
       else next.add(id)
       return next
     })
+  }
+
+  function changeSort(next: SortOrder) {
+    setSort(next)
+    try {
+      localStorage.setItem(SORT_KEY, next)
+    } catch {
+      // 정렬 기억은 편의 기능이라 실패해도 무시한다.
+    }
   }
 
   function toggleAll() {
@@ -77,16 +103,39 @@ export function TestSelect() {
               <span className="text-[13.5px] text-ink-muted">
                 <b className="text-ink">{selected.size}</b> / {sets.length}개 선택
               </span>
-              <button
-                type="button"
-                onClick={toggleAll}
-                className="flex-none rounded-[10px] bg-surface-alt px-3 py-1.5 text-[13px] font-bold text-primary"
-              >
-                {allSelected ? '전체 해제' : '전체 선택'}
-              </button>
+              <div className="flex flex-none items-center gap-1.5">
+                <div role="radiogroup" aria-label="정렬" className="flex rounded-[10px] bg-surface-alt p-0.5">
+                  {(
+                    [
+                      ['newest', '최신순'],
+                      ['oldest', '오래된순'],
+                    ] as const
+                  ).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      role="radio"
+                      aria-checked={sort === value}
+                      onClick={() => changeSort(value)}
+                      className={`rounded-[8px] px-2.5 py-1.5 text-[12.5px] font-bold ${
+                        sort === value ? 'bg-surface text-primary shadow-sm' : 'text-ink-muted'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={toggleAll}
+                  className="rounded-[10px] bg-surface-alt px-3 py-1.5 text-[12.5px] font-bold text-primary"
+                >
+                  {allSelected ? '전체 해제' : '전체 선택'}
+                </button>
+              </div>
             </div>
 
-            {sets.map((s) => {
+            {sortedSets.map((s) => {
               const checked = selected.has(s.id)
               return (
                 <button
