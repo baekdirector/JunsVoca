@@ -1,35 +1,16 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { BookIcon, ChevronRightIcon, PencilIcon, PlusIcon } from '../components/icons'
 import { BottomNav } from '../components/BottomNav'
 import { Loading } from '../components/Loading'
-import { getWordSets, updateWordSetTitle, type WordSetRecord } from '../lib/db'
+import { getWordSets, updateWordSetTitle } from '../lib/db'
+import { loadWordSetsCache, saveWordSetsCache, type WordSetItem } from '../lib/wordSetsCache'
 import { useSlowLoading } from '../lib/useSlowLoading'
 
-type WordSetItem = WordSetRecord & { count: number }
-
-// 서버가 잠들어 있다가 깨어나는 동안에도 지난번 목록을 바로 보여주기 위한 캐시.
-const CACHE_KEY = 'junsvoca_wordsets_cache'
-
-function loadCache(): WordSetItem[] | null {
-  try {
-    const raw = localStorage.getItem(CACHE_KEY)
-    return raw ? (JSON.parse(raw) as WordSetItem[]) : null
-  } catch {
-    return null
-  }
-}
-
-function saveCache(sets: WordSetItem[]) {
-  try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(sets))
-  } catch {
-    // 캐시는 편의 기능이라 실패해도 무시한다.
-  }
-}
-
 export function WordSets() {
-  const [sets, setSets] = useState<WordSetItem[] | null>(loadCache)
+  // 단어장을 막 저장하고 넘어온 경우 그 단어장을 표시한다.
+  const savedId = (useLocation().state as { savedId?: number } | null)?.savedId
+  const [sets, setSets] = useState<WordSetItem[] | null>(loadWordSetsCache)
   const [refreshing, setRefreshing] = useState(true)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [draftTitle, setDraftTitle] = useState('')
@@ -40,7 +21,7 @@ export function WordSets() {
     getWordSets()
       .then((fresh) => {
         setSets(fresh)
-        saveCache(fresh)
+        saveWordSetsCache(fresh)
       })
       .catch(() => setSets((prev) => prev ?? []))
       .finally(() => setRefreshing(false))
@@ -62,7 +43,7 @@ export function WordSets() {
       await updateWordSetTitle(set.id, title)
       const next = (sets ?? []).map((s) => (s.id === set.id ? { ...s, title } : s))
       setSets(next)
-      saveCache(next)
+      saveWordSetsCache(next)
       setEditingId(null)
     } catch {
       setError('이름을 저장하지 못했어요. 잠시 후 다시 시도해주세요.')
@@ -99,7 +80,12 @@ export function WordSets() {
             </p>
           ) : (
             sets.map((s) => (
-              <div key={s.id} className="flex items-center gap-2 rounded-2xl border border-border bg-surface p-4">
+              <div
+                key={s.id}
+                className={`flex items-center gap-2 rounded-2xl border p-4 ${
+                  s.id === savedId ? 'border-primary bg-primary-tint/40' : 'border-border bg-surface'
+                }`}
+              >
                 {editingId === s.id ? (
                   <form
                     className="flex min-w-0 flex-1 items-center gap-2"
@@ -140,6 +126,9 @@ export function WordSets() {
                         <div className="mt-0.5 text-[12.5px] text-ink-muted">
                           단어 {s.count}개 · {new Date(s.createdAt).toLocaleDateString('ko-KR')}
                         </div>
+                        {s.id === savedId && (
+                          <div className="mt-0.5 text-[12.5px] font-bold text-primary">방금 저장했어요</div>
+                        )}
                       </div>
                       <ChevronRightIcon width={18} height={18} className="flex-none text-ink-muted" />
                     </Link>

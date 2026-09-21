@@ -30,7 +30,8 @@
   --color-gold-tint: #fbf1da;
 
   --font-kr: 'Noto Sans KR', system-ui, sans-serif;
-  --font-display: 'Fraunces', Georgia, serif;
+  /* 영어 단어용: 읽기를 배우는 아이들을 위해 만든 글꼴 (a가 한 층, I/l/1 구분이 확실) */
+  --font-display: 'Andika', 'Noto Sans KR', system-ui, sans-serif;
 }
 
 body {

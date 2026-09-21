@@ -14,6 +14,7 @@ import {
   type WordRecord,
 } from '../lib/db'
 import type { ParsedWord } from '../lib/parseWords'
+import { clearWordSetsCache } from '../lib/wordSetsCache'
 
 interface Row {
   key: string
@@ -47,6 +48,7 @@ export function WordReview() {
   )
   const [loaded, setLoaded] = useState(!isExisting)
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
 
   useEffect(() => {
     if (!isExisting) return
@@ -96,15 +98,18 @@ export function WordReview() {
     }
   }
 
-  async function saveAndGo(goTo: 'quiz' | 'home') {
+  async function save() {
     setSaving(true)
+    setSaveError('')
     try {
       const cleaned = rows
         .filter((r) => r.term.trim() && r.meaning.trim())
         .map((r) => ({ term: r.term.trim(), meaning: r.meaning.trim(), isIdiom: isIdiom(r.term) }))
       const newId = await createWordSet(title.trim() || defaultTitle(), cleaned)
-      navigate(goTo === 'quiz' ? `/quiz/${newId}` : '/')
-    } finally {
+      clearWordSetsCache() // 목록을 다시 불러와서 방금 저장한 단어장이 보이게 한다
+      navigate('/wordsets', { state: { savedId: newId } })
+    } catch {
+      setSaveError('저장하지 못했어요. 잠시 후 다시 시도해주세요.')
       setSaving(false)
     }
   }
@@ -210,21 +215,14 @@ export function WordReview() {
           </button>
         ) : (
           <>
+            {saveError && <p className="m-0 text-center text-[13px] font-semibold text-error">{saveError}</p>}
             <button
               type="button"
               disabled={validCount === 0 || saving}
-              onClick={() => saveAndGo('quiz')}
+              onClick={save}
               className="rounded-2xl bg-primary p-[15px] text-center text-[15.5px] font-bold text-white disabled:opacity-40"
             >
-              단어장 저장하고 테스트 시작
-            </button>
-            <button
-              type="button"
-              disabled={validCount === 0 || saving}
-              onClick={() => saveAndGo('home')}
-              className="text-center text-[13px] font-semibold text-ink-muted disabled:opacity-40"
-            >
-              나중에 테스트하기
+              {saving ? '저장 중...' : '저장하기'}
             </button>
           </>
         )}

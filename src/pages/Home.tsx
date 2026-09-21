@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { BottomNav } from '../components/BottomNav'
 import { BookIcon, ChartIcon, ChevronRightIcon, CheckCircleIcon, PencilIcon, StarIcon, XCircleIcon } from '../components/icons'
-import { getHomeStats, getLatestWordSet, type HomeStats } from '../lib/db'
+import { getHomeStats, type HomeStats } from '../lib/db'
 
 function todayLabel() {
   const d = new Date()
@@ -12,14 +12,9 @@ function todayLabel() {
 
 export function Home() {
   const [stats, setStats] = useState<HomeStats | null>(null)
-  // undefined: 아직 불러오는 중, null: 단어장 없음
-  const [latestWordSetId, setLatestWordSetId] = useState<number | null | undefined>(undefined)
 
   useEffect(() => {
     getHomeStats().then(setStats).catch(() => {})
-    getLatestWordSet()
-      .then((s) => setLatestWordSetId(s?.id ?? null))
-      .catch(() => setLatestWordSetId(null))
   }, [])
 
   return (
@@ -58,39 +53,19 @@ export function Home() {
 
         <div className="flex flex-col gap-3 pt-6">
           <Link
-            to="/input"
+            to="/test"
             className="flex items-center gap-3.5 rounded-[20px] bg-primary p-4.5 shadow-[0_8px_20px_-10px_rgba(20,79,76,0.55)]"
           >
             <div className="flex h-11 w-11 flex-none items-center justify-center rounded-2xl bg-white/20">
-              <PencilIcon width={22} height={22} className="text-white" />
-            </div>
-            <div className="flex-1">
-              <div className="text-[16px] font-bold text-white">단어 입력하기</div>
-              <div className="mt-0.5 text-[12.5px] text-white/85">영단어와 뜻을 입력해서 단어장 만들기</div>
-            </div>
-            <ChevronRightIcon width={18} height={18} className="text-white" />
-          </Link>
-
-          <Link
-            to={latestWordSetId ? `/quiz/${latestWordSetId}` : '/input'}
-            className="flex items-center gap-3.5 rounded-[20px] border border-border bg-surface p-4.5"
-          >
-            <div className="flex h-11 w-11 flex-none items-center justify-center rounded-2xl bg-primary-tint">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className="text-primary">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className="text-white">
                 <path d="M8 5l11 7-11 7Z" />
               </svg>
             </div>
             <div className="flex-1">
-              <div className="text-[16px] font-bold">오늘의 테스트 시작하기</div>
-              <div className="mt-0.5 text-[12.5px] text-ink-muted">
-                {latestWordSetId === undefined
-                  ? '단어장을 불러오는 중...'
-                  : latestWordSetId
-                    ? '저장된 단어장으로 바로 퀴즈 풀기'
-                    : '먼저 단어장을 만들어주세요'}
-              </div>
+              <div className="text-[17px] font-bold text-white">테스트 시작하기</div>
+              <div className="mt-0.5 text-[12.5px] text-white/85">단어장을 골라서 시험 보기</div>
             </div>
-            <ChevronRightIcon width={18} height={18} className="text-ink-muted" />
+            <ChevronRightIcon width={18} height={18} className="text-white" />
           </Link>
 
           <Link to="/wrong" className="flex items-center gap-3.5 rounded-[20px] border border-border bg-surface p-4.5">
@@ -117,6 +92,13 @@ export function Home() {
               <div className="mt-0.5 text-[12.5px] text-ink-muted">저장된 단어장 확인하고 수정하기</div>
             </div>
             <ChevronRightIcon width={18} height={18} className="text-ink-muted" />
+          </Link>
+
+          <Link
+            to="/input"
+            className="mt-1 flex items-center justify-center gap-2 rounded-[20px] border-[1.5px] border-dashed border-border p-4 text-[14px] font-semibold text-ink-muted"
+          >
+            <PencilIcon width={16} height={16} />새 단어장 만들기 (단어 입력)
           </Link>
         </div>
       </div>
