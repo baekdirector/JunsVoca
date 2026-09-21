@@ -1,6 +1,6 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { Home } from './pages/Home'
-import { Capture } from './pages/Capture'
+import { TextInput } from './pages/TextInput'
 import { WordSets } from './pages/WordSets'
 import { WordReview } from './pages/WordReview'
 import { Quiz } from './pages/Quiz'
@@ -12,7 +12,7 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Home />} />
-        <Route path="/capture" element={<Capture />} />
+        <Route path="/input" element={<TextInput />} />
         <Route path="/wordsets" element={<WordSets />} />
         <Route path="/wordsets/review" element={<WordReview />} />
         <Route path="/wordsets/:id" element={<WordReview />} />

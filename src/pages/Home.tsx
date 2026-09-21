@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { BottomNav } from '../components/BottomNav'
-import { BookIcon, CameraIcon, ChartIcon, ChevronRightIcon, CheckCircleIcon, StarIcon } from '../components/icons'
+import { BookIcon, ChartIcon, ChevronRightIcon, CheckCircleIcon, PencilIcon, StarIcon } from '../components/icons'
 import { getHomeStats, getLatestWordSet, type HomeStats } from '../lib/db'
 
 function todayLabel() {
@@ -55,21 +55,21 @@ export function Home() {
 
         <div className="flex flex-col gap-3 pt-6">
           <Link
-            to="/capture"
+            to="/input"
             className="flex items-center gap-3.5 rounded-[20px] bg-primary p-4.5 shadow-[0_8px_20px_-10px_rgba(20,79,76,0.55)]"
           >
             <div className="flex h-11 w-11 flex-none items-center justify-center rounded-2xl bg-white/20">
-              <CameraIcon width={22} height={22} className="text-white" />
+              <PencilIcon width={22} height={22} className="text-white" />
             </div>
             <div className="flex-1">
-              <div className="text-[16px] font-bold text-white">프린트물 촬영하기</div>
-              <div className="mt-0.5 text-[12.5px] text-white/85">새 단어 인식해서 단어장 만들기</div>
+              <div className="text-[16px] font-bold text-white">단어 입력하기</div>
+              <div className="mt-0.5 text-[12.5px] text-white/85">영단어와 뜻을 입력해서 단어장 만들기</div>
             </div>
             <ChevronRightIcon width={18} height={18} className="text-white" />
           </Link>
 
           <Link
-            to={latestWordSetId ? `/quiz/${latestWordSetId}` : '/capture'}
+            to={latestWordSetId ? `/quiz/${latestWordSetId}` : '/input'}
             className="flex items-center gap-3.5 rounded-[20px] border border-border bg-surface p-4.5"
           >
             <div className="flex h-11 w-11 flex-none items-center justify-center rounded-2xl bg-primary-tint">

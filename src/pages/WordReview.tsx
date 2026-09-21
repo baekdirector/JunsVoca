@@ -118,7 +118,7 @@ export function WordReview() {
         <button
           type="button"
           aria-label="뒤로가기"
-          onClick={() => navigate(isExisting ? '/' : '/capture')}
+          onClick={() => navigate(isExisting ? '/' : '/input')}
           className="flex h-[38px] w-[38px] items-center justify-center rounded-full text-ink"
         >
           <ArrowLeftIcon />
@@ -135,7 +135,7 @@ export function WordReview() {
 
       <div className="flex flex-none items-center justify-between px-[22px] pb-1.5 pt-3.5">
         <span className="text-[13px] text-ink-muted">
-          총 <b className="text-ink">{rows.length}개</b> 단어 {isExisting ? '' : '인식됨'} · 수정 후 저장하세요
+          총 <b className="text-ink">{rows.length}개</b> 단어 · 수정 후 저장하세요
         </span>
       </div>
 

@@ -14,7 +14,7 @@ export default defineConfig({
       manifest: {
         name: 'JunsVoca',
         short_name: 'JunsVoca',
-        description: '학원 프린트물을 촬영해서 영어 단어/숙어를 인식하고, 스펠링·뜻 쓰기 퀴즈로 학습하는 앱',
+        description: '영어 단어/숙어를 입력해 단어장을 만들고, 스펠링·뜻 쓰기 퀴즈로 학습하는 앱',
         theme_color: '#1F6F6B',
         background_color: '#FAF7F0',
         display: 'standalone',
@@ -30,9 +30,6 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,png,svg,ico,woff2}'],
-        // The OCR engine's WASM core is multiple MB -- fetch it lazily on first
-        // use (cached below) instead of blocking the initial install/update.
-        globIgnores: ['**/tesseract/core/**'],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
@@ -48,23 +45,6 @@ export default defineConfig({
             options: {
               cacheName: 'google-fonts-webfonts',
               expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 },
-            },
-          },
-          {
-            urlPattern: /\/tesseract\/core\/.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'tesseract-core',
-              expiration: { maxEntries: 4, maxAgeSeconds: 60 * 60 * 24 * 365 },
-            },
-          },
-          {
-            urlPattern: /^https:\/\/cdn\.jsdelivr\.net\/npm\/@tesseract\.js-data\/.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'tesseract-lang-data',
-              expiration: { maxEntries: 6, maxAgeSeconds: 60 * 60 * 24 * 365 },
-              cacheableResponse: { statuses: [0, 200] },
             },
           },
         ],

@@ -17,8 +17,10 @@ const POS_TAGS: Record<string, string> = {
   접: '접속사',
 }
 
+// "1.", "1)", "1:" 뿐 아니라 "1 festival", "1, festival", "1(탭)festival" 처럼 번호 뒤에
+// 공백/쉼표/탭만 오는 형식도 번호로 본다. ("3D printer"처럼 붙어 있는 숫자는 건드리지 않는다.)
 function stripLeadingNumbering(line: string): string {
-  return line.replace(/^\s*[\d０-９]{1,3}\s*[.).:\]]\s*/, '').trim()
+  return line.replace(/^\s*[\d０-９]{1,3}(?:\s*[.).:\]]\s*|[\s,]+)/, '').trim()
 }
 
 function extractPartOfSpeech(term: string): { term: string; partOfSpeech?: string } {
@@ -41,9 +43,9 @@ function splitByDelimiter(line: string): [string, string] | null {
 function splitByScriptBoundary(line: string): [string, string] | null {
   let splitIndex = line.split('').findIndex((ch) => HANGUL_RE.test(ch))
   if (splitIndex <= 0) return null
-  // "~" (and similar placeholder marks) conventionally belong with the Korean
-  // meaning ("~을 책임지고 있는"), not the English term -- keep them together.
-  while (splitIndex > 0 && /[~-]/.test(line[splitIndex - 1])) splitIndex--
+  // "~" and opening brackets (and similar marks) conventionally belong with the
+  // Korean meaning ("~을 책임지고 있는", "(쇼의) 회"), not the English term.
+  while (splitIndex > 0 && /[~\-(（[…]/.test(line[splitIndex - 1])) splitIndex--
   const left = line.slice(0, splitIndex).trim()
   const right = line.slice(splitIndex).trim()
   if (!left || !right) return null
@@ -51,42 +53,65 @@ function splitByScriptBoundary(line: string): [string, string] | null {
   return [left, right]
 }
 
+export interface ParseResult {
+  words: ParsedWord[]
+  /** 영단어/뜻으로 나누지 못했거나 중복이라 제외된 줄 (빈 줄 제외) */
+  skipped: string[]
+}
+
 /**
- * Turns raw OCR text from a vocabulary printout into term/meaning pairs.
- * Handles "word - meaning", "word: meaning", and delimiter-less lines like
- * "considerable 상당한" where the script boundary marks the split.
+ * Turns typed/pasted text (one word per line: "번호 영단어 뜻") into term/meaning
+ * pairs. Handles "1 word meaning", "word - meaning", "word: meaning", and
+ * tab/comma separated lines, where the script boundary marks the split.
+ * Lines that can't be read (or repeat an earlier term) are reported in `skipped`.
  */
-export function parseWords(rawText: string): ParsedWord[] {
+export function parseWordsDetailed(rawText: string): ParseResult {
   const lines = rawText
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter(Boolean)
 
-  const results: ParsedWord[] = []
+  const words: ParsedWord[] = []
+  const skipped: string[] = []
+  const seen = new Set<string>()
 
   for (const rawLine of lines) {
-    const line = stripLeadingNumbering(rawLine)
-    if (!line || line.length < 3) continue
-
-    const split = splitByDelimiter(line) ?? splitByScriptBoundary(line)
-    if (!split) continue
-
-    let [term, meaning] = split
-    term = term.replace(/[.,;]+$/, '').trim()
-    meaning = meaning.replace(/^[.,;]+/, '').trim()
-    if (!term || !meaning) continue
-    if (!LATIN_RE.test(term)) continue
-
-    const { term: cleanTerm, partOfSpeech } = extractPartOfSpeech(term)
-    if (!cleanTerm) continue
-
-    results.push({
-      term: cleanTerm,
-      meaning,
-      isIdiom: cleanTerm.trim().includes(' '),
-      partOfSpeech,
-    })
+    const parsed = parseLine(rawLine)
+    if (!parsed || seen.has(parsed.term.toLowerCase())) {
+      skipped.push(rawLine)
+      continue
+    }
+    seen.add(parsed.term.toLowerCase())
+    words.push(parsed)
   }
 
-  return results
+  return { words, skipped }
+}
+
+export function parseWords(rawText: string): ParsedWord[] {
+  return parseWordsDetailed(rawText).words
+}
+
+function parseLine(rawLine: string): ParsedWord | null {
+  const line = stripLeadingNumbering(rawLine)
+  if (!line || line.length < 3) return null
+
+  const split = splitByDelimiter(line) ?? splitByScriptBoundary(line)
+  if (!split) return null
+
+  let [term, meaning] = split
+  term = term.replace(/[.,;]+$/, '').trim()
+  meaning = meaning.replace(/^[.,;]+/, '').trim()
+  if (!term || !meaning) return null
+  if (!LATIN_RE.test(term)) return null
+
+  const { term: cleanTerm, partOfSpeech } = extractPartOfSpeech(term)
+  if (!cleanTerm) return null
+
+  return {
+    term: cleanTerm,
+    meaning,
+    isIdiom: cleanTerm.trim().includes(' '),
+    partOfSpeech,
+  }
 }

@@ -3,9 +3,24 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { CheckCircleIcon, SpeakerIcon, StarIcon, XCircleIcon, XIcon } from '../components/icons'
 import { useSpeak } from '../lib/useSpeak'
 import { getWordSet, getWordsBySet, recordQuizRound, type QuizAnswerRecord } from '../lib/db'
-import { checkAnswer, formatDuration, generateQuestions, type Question, type QuizWord } from '../lib/quiz'
+import {
+  checkAnswer,
+  formatDuration,
+  generateQuestions,
+  type Question,
+  type QuizMode,
+  type QuizWord,
+} from '../lib/quiz'
 
-type Phase = 'loading' | 'nowords' | 'asking' | 'round-summary'
+type Phase = 'loading' | 'nowords' | 'setup' | 'asking' | 'round-summary'
+
+const COUNT_OPTIONS = [5, 10, 20] as const
+const ALL_WORDS = 0
+const MODE_OPTIONS: { value: QuizMode; label: string }[] = [
+  { value: 'mixed', label: '섞어서' },
+  { value: 'meaning', label: '영어→뜻' },
+  { value: 'spelling', label: '뜻→영어' },
+]
 
 interface AnswerLog extends Omit<QuizAnswerRecord, 'id' | 'sessionId'> {}
 
@@ -27,6 +42,10 @@ export function Quiz() {
   const [wordSetTitle, setWordSetTitle] = useState('')
   const [round, setRound] = useState(1)
   const [groupId] = useState(() => crypto.randomUUID())
+
+  const [allWords, setAllWords] = useState<QuizWord[]>([])
+  const [questionCount, setQuestionCount] = useState<number>(ALL_WORDS)
+  const [mode, setMode] = useState<QuizMode>('mixed')
 
   const [questions, setQuestions] = useState<Question[]>([])
   const [qIndex, setQIndex] = useState(0)
@@ -50,7 +69,8 @@ export function Quiz() {
         return
       }
       setWordSetTitle(set.title)
-      startRound(words as QuizWord[], 1)
+      setAllWords(words as QuizWord[])
+      setPhase('setup')
     })()
     return () => {
       cancelled = true
@@ -58,8 +78,8 @@ export function Quiz() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wordSetId])
 
-  function startRound(words: QuizWord[], roundNumber: number) {
-    setQuestions(generateQuestions(words))
+  function startRound(words: QuizWord[], roundNumber: number, count?: number) {
+    setQuestions(generateQuestions(words, { count, mode }))
     setQIndex(0)
     setAnswer('')
     setFeedback('idle')
@@ -123,6 +143,11 @@ export function Quiz() {
     setPhase('round-summary')
   }
 
+  function startQuiz() {
+    const count = questionCount === ALL_WORDS ? undefined : questionCount
+    startRound(allWords, 1, count)
+  }
+
   function retryWrong() {
     if (!roundResult) return
     const wrongWords: QuizWord[] = []
@@ -157,6 +182,55 @@ export function Quiz() {
         >
           홈으로 가기
         </button>
+      </div>
+    )
+  }
+
+  if (phase === 'setup') {
+    const total = allWords.length
+    const effectiveCount = questionCount === ALL_WORDS ? total : Math.min(questionCount, total)
+    return (
+      <div className="flex min-h-svh flex-col bg-bg">
+        <div className="flex flex-none items-center gap-3 px-[18px] pt-[18px]">
+          <button
+            type="button"
+            aria-label="홈으로"
+            onClick={() => navigate('/')}
+            className="flex h-[38px] w-[38px] items-center justify-center rounded-full text-ink"
+          >
+            <XIcon width={18} height={18} />
+          </button>
+          <h2 className="m-0 text-[17px] font-bold">테스트 설정</h2>
+        </div>
+
+        <div className="flex flex-1 flex-col px-[22px] py-5">
+          <div className="rounded-[22px] border border-border bg-surface p-5">
+            <div className="text-[19px] font-extrabold">{wordSetTitle}</div>
+            <p className="m-0 mt-1 text-[13px] text-ink-muted">
+              단어 {total}개 중 {effectiveCount}문제를 풀어요
+            </p>
+          </div>
+
+          <OptionGroup
+            label="문제 수"
+            value={questionCount}
+            onChange={setQuestionCount}
+            options={[
+              ...COUNT_OPTIONS.filter((c) => c < total).map((c) => ({ value: c as number, label: `${c}개` })),
+              { value: ALL_WORDS, label: `전체 (${total})` },
+            ]}
+          />
+          <OptionGroup label="시험 유형" value={mode} onChange={setMode} options={MODE_OPTIONS} />
+
+          <div className="flex-1" />
+          <button
+            type="button"
+            onClick={startQuiz}
+            className="rounded-2xl bg-primary p-[15px] text-[15.5px] font-bold text-white"
+          >
+            테스트 시작
+          </button>
+        </div>
       </div>
     )
   }
@@ -257,6 +331,43 @@ export function Quiz() {
             다음 문제
           </button>
         )}
+      </div>
+    </div>
+  )
+}
+
+function OptionGroup<T extends string | number>({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string
+  value: T
+  onChange: (value: T) => void
+  options: { value: T; label: string }[]
+}) {
+  return (
+    <div className="mt-6">
+      <div className="mb-2 text-[13px] font-bold text-ink-muted">{label}</div>
+      <div role="radiogroup" aria-label={label} className="flex gap-2">
+        {options.map((option) => {
+          const selected = option.value === value
+          return (
+            <button
+              key={option.value}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              onClick={() => onChange(option.value)}
+              className={`min-w-0 flex-1 rounded-2xl border p-3 text-[14px] font-semibold ${
+                selected ? 'border-primary bg-primary text-white' : 'border-border bg-surface text-ink'
+              }`}
+            >
+              {option.label}
+            </button>
+          )
+        })}
       </div>
     </div>
   )
