@@ -22,6 +22,9 @@ app.use(express.json())
 
 app.get('/healthz', (_req, res) => res.status(200).send('ok'))
 
+// 지금 떠 있는 배포가 어느 커밋인지 확인용 (Render가 RENDER_GIT_COMMIT을 넣어준다).
+app.get('/api/version', (_req, res) => res.json({ commit: process.env.RENDER_GIT_COMMIT ?? 'dev' }))
+
 app.use('/api', router)
 
 if (fs.existsSync(distDir)) {
