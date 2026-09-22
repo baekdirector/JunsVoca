@@ -22,9 +22,7 @@ export function Home() {
       <div className="flex flex-1 flex-col px-[22px] pb-6">
         <div className="flex items-center justify-between pt-5">
           <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-primary">
-              <span className="font-display text-[17px] font-bold text-white">J</span>
-            </div>
+            <img src="/icons/icon-192.png" alt="" width={36} height={36} className="h-9 w-9 rounded-[10px]" />
             <span className="font-display text-[19px] font-bold">JunsVoca</span>
           </div>
           <Link

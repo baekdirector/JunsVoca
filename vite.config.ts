@@ -10,7 +10,7 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'icons/apple-touch-icon.png'],
+      includeAssets: ['favicon.ico', 'icons/apple-touch-icon.png'],
       manifest: {
         name: 'JunsVoca',
         short_name: 'JunsVoca',
@@ -30,6 +30,8 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,png,svg,ico,woff2}'],
+        // 공유 미리보기 이미지는 앱이 쓰지 않으므로 오프라인 캐시에 넣지 않는다.
+        globIgnores: ['og-image.png'],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
