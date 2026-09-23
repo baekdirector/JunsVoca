@@ -69,3 +69,13 @@ button {
 .animate-speak {
   animation: speak-pulse 0.6s ease-in-out infinite;
 }
+
+/* 가로 스크롤 스트립(문제 번호 등)에서 스크롤바를 숨긴다. 스크롤 자체는 그대로 된다. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

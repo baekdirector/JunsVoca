@@ -1,6 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { CheckCircleIcon, PencilIcon, SpeakerIcon, StarIcon, XCircleIcon, XIcon } from '../components/icons'
+import {
+  CheckCircleIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  PencilIcon,
+  SpeakerIcon,
+  StarIcon,
+  XCircleIcon,
+  XIcon,
+} from '../components/icons'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 import { Loading } from '../components/Loading'
 import { useSpeak } from '../lib/useSpeak'
 import {
@@ -9,21 +19,22 @@ import {
   getWrongNotes,
   recordQuizRound,
   updateWordSetTitle,
-  type QuizAnswerRecord,
 } from '../lib/db'
+import { checkAnswer, formatDateTime, formatDuration, generateQuestions, type Question, type QuizWord } from '../lib/quiz'
 import {
-  checkAnswer,
-  formatDateTime,
-  formatDuration,
-  generateQuestions,
-  type Question,
-  type QuizMode,
-  type QuizWord,
-} from '../lib/quiz'
+  clearQuizProgress,
+  loadQuizProgress,
+  saveQuizProgress,
+  type SavedAnswer,
+} from '../lib/quizProgress'
 
 type QuizOrder = 'shuffle' | 'ordered'
 
 type Phase = 'loading' | 'nowords' | 'setup' | 'asking' | 'round-summary'
+
+// 뜻을 자유롭게 입력받는 유형(영어→뜻)은 비슷한 말을 컴퓨터가 자동으로 알아보기 어려워
+// 채점이 애매해진다. 정확히 채점할 수 있는 "뜻→영어(철자 쓰기)"로만 출제한다.
+const FIXED_QUESTION_TYPE = 'spelling'
 
 const COUNT_OPTIONS = [5, 10, 20, 50] as const
 const ALL_WORDS = 0
@@ -31,13 +42,8 @@ const ORDER_OPTIONS: { value: QuizOrder; label: string }[] = [
   { value: 'shuffle', label: '섞기' },
   { value: 'ordered', label: '단어장 순서대로' },
 ]
-const MODE_OPTIONS: { value: QuizMode; label: string }[] = [
-  { value: 'mixed', label: '섞어서' },
-  { value: 'meaning', label: '영어→뜻' },
-  { value: 'spelling', label: '뜻→영어' },
-]
 
-interface AnswerLog extends Omit<QuizAnswerRecord, 'id' | 'sessionId'> {}
+type AnswerLog = SavedAnswer
 
 interface RoundResult {
   round: number
@@ -59,6 +65,18 @@ function parseIds(raw: string): number[] {
     .filter((n) => Number.isInteger(n) && n > 0)
 }
 
+function buildAnswer(q: Question, userAnswer: string, correct: boolean): AnswerLog {
+  return {
+    wordId: q.word.id,
+    questionType: q.type,
+    term: q.word.term,
+    meaning: q.word.meaning,
+    correctAnswer: q.type === 'spelling' ? q.word.term : q.word.meaning,
+    userAnswer,
+    correct,
+  }
+}
+
 export function Quiz() {
   const { wordSetId: wordSetIdParam } = useParams<{ wordSetId: string }>()
   const [searchParams] = useSearchParams()
@@ -72,25 +90,26 @@ export function Quiz() {
   const [phase, setPhase] = useState<Phase>('loading')
   const [wordSetTitle, setWordSetTitle] = useState('')
   const [round, setRound] = useState(1)
-  const [groupId] = useState(() => crypto.randomUUID())
+  const [groupId, setGroupId] = useState('')
 
   const [allWords, setAllWords] = useState<QuizWord[]>([])
   const [setCount, setSetCount] = useState(1)
   const [questionCount, setQuestionCount] = useState<number>(ALL_WORDS)
-  const [mode, setMode] = useState<QuizMode>('mixed')
   const [order, setOrder] = useState<QuizOrder>('shuffle')
   const [titleError, setTitleError] = useState('')
 
   const [questions, setQuestions] = useState<Question[]>([])
+  const [answers, setAnswers] = useState<(AnswerLog | null)[]>([])
   const [qIndex, setQIndex] = useState(0)
-  const [answer, setAnswer] = useState('')
-  const [feedback, setFeedback] = useState<'idle' | 'correct' | 'wrong'>('idle')
-
-  const roundAnswersRef = useRef<AnswerLog[]>([])
-  const roundStartedAtRef = useRef(0)
-  const firstRoundRef = useRef({ correct: 0, total: 0 })
-  const savedTitleRef = useRef('')
+  const [answerInput, setAnswerInput] = useState('')
+  const [roundStartedAt, setRoundStartedAt] = useState(0)
+  const [firstRound, setFirstRound] = useState<{ correct: number; total: number } | null>(null)
   const [roundResult, setRoundResult] = useState<RoundResult | null>(null)
+  const [exitDialogOpen, setExitDialogOpen] = useState(false)
+  const [finishDialogOpen, setFinishDialogOpen] = useState(false)
+
+  const savedTitleRef = useRef('')
+  const badgeRefs = useRef<Array<HTMLButtonElement | null>>([])
 
   const { speak, speakingTerm } = useSpeak()
 
@@ -136,7 +155,23 @@ export function Quiz() {
       savedTitleRef.current = title
       setAllWords(words)
       setSetCount(sets)
-      setPhase('setup')
+
+      // 풀다가 나간 테스트가 있으면 처음부터가 아니라 이어서 보여준다.
+      const saved = loadQuizProgress(idsKey)
+      if (saved) {
+        setQuestions(saved.questions)
+        setAnswers(saved.answers)
+        const resumeIndex = Math.min(saved.qIndex, saved.questions.length - 1)
+        setQIndex(resumeIndex)
+        setAnswerInput(saved.answers[resumeIndex]?.userAnswer ?? '')
+        setRound(saved.round)
+        setGroupId(saved.groupId)
+        setRoundStartedAt(saved.startedAt)
+        setFirstRound(saved.firstRound)
+        setPhase('asking')
+      } else {
+        setPhase('setup')
+      }
     })()
     return () => {
       cancelled = true
@@ -144,67 +179,114 @@ export function Quiz() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idsKey])
 
+  // 풀고 있는 동안 진행 상황을 계속 저장해서, 실수로 화면을 벗어나도 이어서 풀 수 있게 한다.
+  useEffect(() => {
+    if (phase !== 'asking' || questions.length === 0) return
+    saveQuizProgress(idsKey, {
+      wordSetTitle,
+      setCount,
+      round,
+      groupId,
+      startedAt: roundStartedAt,
+      firstRound,
+      questions,
+      answers,
+      qIndex,
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, questions, answers, qIndex, round, groupId, roundStartedAt, wordSetTitle, setCount])
+
+  useEffect(() => {
+    badgeRefs.current[qIndex]?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' })
+  }, [qIndex, questions.length])
+
+  const currentQuestion = questions[qIndex]
+  const feedback: 'idle' | 'correct' | 'wrong' =
+    answers[qIndex] == null ? 'idle' : answers[qIndex]!.correct ? 'correct' : 'wrong'
+  const answeredCount = answers.filter((a) => a !== null).length
+
   function startRound(words: QuizWord[], roundNumber: number, count?: number) {
-    setQuestions(generateQuestions(words, { count, mode, shuffle: order === 'shuffle' }))
+    const qs = generateQuestions(words, { count, mode: FIXED_QUESTION_TYPE, shuffle: order === 'shuffle' })
+    setQuestions(qs)
+    setAnswers(Array(qs.length).fill(null))
     setQIndex(0)
-    setAnswer('')
-    setFeedback('idle')
-    roundAnswersRef.current = []
-    roundStartedAtRef.current = Date.now()
+    setAnswerInput('')
     setRound(roundNumber)
+    setRoundStartedAt(Date.now())
     setPhase('asking')
   }
 
-  const currentQuestion = questions[qIndex]
+  function goTo(index: number) {
+    const clamped = Math.max(0, Math.min(questions.length - 1, index))
+    setQIndex(clamped)
+    setAnswerInput(answers[clamped]?.userAnswer ?? '')
+  }
 
   function submit(skip = false) {
     if (!currentQuestion) return
-    const correct = !skip && checkAnswer(currentQuestion, answer)
-    roundAnswersRef.current.push({
-      wordId: currentQuestion.word.id,
-      questionType: currentQuestion.type,
-      term: currentQuestion.word.term,
-      meaning: currentQuestion.word.meaning,
-      correctAnswer: currentQuestion.type === 'spelling' ? currentQuestion.word.term : currentQuestion.word.meaning,
-      userAnswer: skip ? '' : answer,
-      correct,
+    const correct = !skip && checkAnswer(currentQuestion, answerInput)
+    const record = buildAnswer(currentQuestion, skip ? '' : answerInput, correct)
+    setAnswers((prev) => {
+      const next = [...prev]
+      next[qIndex] = record
+      return next
     })
-    setFeedback(correct ? 'correct' : 'wrong')
   }
 
-  async function next() {
-    if (qIndex + 1 < questions.length) {
-      setQIndex((i) => i + 1)
-      setAnswer('')
-      setFeedback('idle')
+  /** 이미 채점된 문제를 다시 풀 수 있게 되돌린다 (실수로 잘못 답했을 때 고치는 용도). */
+  function redoCurrent() {
+    setAnswers((prev) => {
+      const next = [...prev]
+      next[qIndex] = null
+      return next
+    })
+  }
+
+  function handleNext() {
+    if (qIndex === questions.length - 1) {
+      requestFinish()
       return
     }
-    await finishRound()
+    goTo(qIndex + 1)
   }
 
-  async function finishRound() {
-    const finishedAt = Date.now()
-    const answers = roundAnswersRef.current
-    const correctCount = answers.filter((a) => a.correct).length
-    const wrongAnswers = answers.filter((a) => !a.correct)
+  function requestFinish() {
+    if (answeredCount < questions.length) {
+      setFinishDialogOpen(true)
+      return
+    }
+    doFinish()
+  }
 
-    if (round === 1) firstRoundRef.current = { correct: correctCount, total: answers.length }
+  function doFinish() {
+    setFinishDialogOpen(false)
+    const finalAnswers = questions.map((q, i) => answers[i] ?? buildAnswer(q, '', false))
+    finishRound(finalAnswers)
+  }
+
+  async function finishRound(finalAnswers: AnswerLog[]) {
+    const finishedAt = Date.now()
+    const correctCount = finalAnswers.filter((a) => a.correct).length
+    const wrongAnswers = finalAnswers.filter((a) => !a.correct)
+    const resultFirstRound = round === 1 ? { correct: correctCount, total: finalAnswers.length } : firstRound
+    if (round === 1) setFirstRound(resultFirstRound)
 
     await recordQuizRound({
       groupId,
       wordSetId: singleId,
       wordSetTitle,
       round,
-      startedAt: roundStartedAtRef.current,
+      startedAt: roundStartedAt,
       finishedAt,
-      answers,
+      answers: finalAnswers,
     })
+    clearQuizProgress(idsKey) // 서버에 남겼으니 기기의 임시 저장은 지운다
 
     setRoundResult({
       round,
       finishedAt,
-      firstRound: firstRoundRef.current,
-      durationMs: finishedAt - roundStartedAtRef.current,
+      firstRound: resultFirstRound ?? { correct: correctCount, total: finalAnswers.length },
+      durationMs: finishedAt - roundStartedAt,
       correctCount,
       wrongCount: wrongAnswers.length,
       wrongAnswers,
@@ -233,6 +315,8 @@ export function Quiz() {
   }
 
   function startQuiz() {
+    setGroupId(crypto.randomUUID())
+    setFirstRound(null)
     const count = questionCount === ALL_WORDS ? undefined : questionCount
     startRound(allWords, 1, count)
   }
@@ -251,8 +335,16 @@ export function Quiz() {
     startRound(wrongWords, round + 1)
   }
 
-  function exitToHome() {
-    if (phase === 'asking' && !window.confirm('테스트를 종료할까요? 진행 상황이 저장되지 않아요.')) return
+  function requestExit() {
+    if (phase === 'asking') {
+      setExitDialogOpen(true)
+      return
+    }
+    navigate('/')
+  }
+
+  function confirmExit() {
+    clearQuizProgress(idsKey)
     navigate('/')
   }
 
@@ -294,7 +386,7 @@ export function Quiz() {
           <h2 className="m-0 text-[17px] font-bold">테스트 설정</h2>
         </div>
 
-        <div className="flex flex-1 flex-col px-[22px] py-5">
+        <div className="flex flex-1 flex-col overflow-y-auto px-[22px] py-5">
           <div className="rounded-[22px] border border-border bg-surface p-5">
             {singleId === null ? (
               <div className="break-words text-[19px] font-extrabold">{wordSetTitle}</div>
@@ -326,14 +418,23 @@ export function Quiz() {
               { value: ALL_WORDS, label: `전체 (${total})` },
             ]}
           />
-          <OptionGroup label="시험 유형" value={mode} onChange={setMode} options={MODE_OPTIONS} />
           <OptionGroup label="문제 순서" value={order} onChange={setOrder} options={ORDER_OPTIONS} />
+
+          <div className="mt-6">
+            <div className="mb-2 text-[13px] font-bold text-ink-muted">시험 유형</div>
+            <div className="rounded-2xl border-2 border-primary bg-primary-tint/40 p-3 text-center text-[14px] font-bold text-primary-dark">
+              뜻을 보고 영어 단어 쓰기
+            </div>
+            <p className="m-0 mt-1.5 px-1 text-[11.5px] leading-relaxed text-ink-muted">
+              비슷한 뜻은 컴퓨터가 자동으로 알아보기 어려워서, 정확하게 채점할 수 있는 이 유형으로만 진행돼요.
+            </p>
+          </div>
 
           <div className="flex-1" />
           <button
             type="button"
             onClick={startQuiz}
-            className="rounded-2xl bg-primary p-[15px] text-[15.5px] font-bold text-white"
+            className="mt-6 rounded-2xl bg-primary p-[15px] text-[15.5px] font-bold text-white"
           >
             테스트 시작
           </button>
@@ -356,90 +457,147 @@ export function Quiz() {
 
   if (!currentQuestion) return null
 
-  const progress = Math.round(((qIndex + (feedback !== 'idle' ? 1 : 0)) / questions.length) * 100)
   const isReviewRound = round > 1
 
   return (
     <div className="flex min-h-svh flex-col bg-bg">
-      <div className="flex-none px-[22px] pt-[18px]">
-        <div className="flex items-center justify-between">
+      <div className="flex-none px-[14px] pt-[16px]">
+        <div className="flex items-center gap-2">
           <button
             type="button"
             aria-label="테스트 종료"
-            onClick={exitToHome}
-            className="flex h-[34px] w-[34px] items-center justify-center text-ink-muted"
+            onClick={requestExit}
+            className="flex h-[34px] w-[34px] flex-none items-center justify-center text-ink-muted"
           >
             <XIcon width={18} height={18} />
           </button>
-          <span className="text-[13px] font-bold text-ink-muted">
+          <div className="no-scrollbar flex flex-1 gap-1.5 overflow-x-auto scroll-smooth py-1">
+            {questions.map((_, i) => {
+              const a = answers[i]
+              const isCurrent = i === qIndex
+              const stateClass = isCurrent
+                ? 'border-2 border-primary bg-surface text-primary'
+                : a === null
+                  ? 'border border-border bg-surface-alt text-ink-muted'
+                  : a.correct
+                    ? 'border border-transparent bg-success text-white'
+                    : 'border border-transparent bg-error text-white'
+              return (
+                <button
+                  key={i}
+                  ref={(el) => {
+                    badgeRefs.current[i] = el
+                  }}
+                  type="button"
+                  aria-label={`${i + 1}번 문제로 이동`}
+                  aria-current={isCurrent}
+                  onClick={() => goTo(i)}
+                  className={`flex h-8 w-8 flex-none items-center justify-center rounded-full text-[12.5px] font-bold ${stateClass}`}
+                >
+                  {i + 1}
+                </button>
+              )
+            })}
+          </div>
+          <span className="flex-none text-[13px] font-bold text-ink-muted">
             {qIndex + 1} / {questions.length}
           </span>
         </div>
         {isReviewRound && (
-          <div className="mt-2 flex justify-center">
+          <div className="mt-2.5 flex justify-center">
             <span className="rounded-full bg-accent-tint px-3 py-1 text-[11.5px] font-bold text-accent-dark">
               복습 라운드 · 틀린 단어만 다시 풀어요
             </span>
           </div>
         )}
-        <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-surface-alt">
-          <div
-            className={`h-full rounded-full transition-all ${isReviewRound ? 'bg-accent' : 'bg-primary'}`}
-            style={{ width: `${progress}%` }}
-          />
-        </div>
       </div>
 
-      <div className="flex flex-1 flex-col px-[22px] py-6">
-        {currentQuestion.type === 'spelling' ? (
-          <SpellingQuestion
-            question={currentQuestion}
-            answer={answer}
-            setAnswer={setAnswer}
-            feedback={feedback}
-            speak={speak}
-            speakingTerm={speakingTerm}
-          />
-        ) : (
-          <MeaningQuestion
-            question={currentQuestion}
-            answer={answer}
-            setAnswer={setAnswer}
-            feedback={feedback}
-            speak={speak}
-            speakingTerm={speakingTerm}
-          />
-        )}
+      <div className="flex flex-1 flex-col overflow-y-auto px-[22px] py-6">
+        <SpellingQuestion
+          question={currentQuestion}
+          answer={answerInput}
+          setAnswer={setAnswerInput}
+          feedback={feedback}
+          speak={speak}
+          speakingTerm={speakingTerm}
+        />
 
         <div className="flex-1" />
 
         {feedback === 'idle' ? (
-          <>
+          <div className="flex gap-2.5">
             <button
               type="button"
               onClick={() => submit(false)}
-              className="rounded-2xl bg-primary p-[15px] text-[15.5px] font-bold text-white"
+              className="flex-1 rounded-2xl bg-primary p-[15px] text-[15.5px] font-bold text-white"
             >
               확인
             </button>
             <button
               type="button"
               onClick={() => submit(true)}
-              className="p-3 text-[13px] font-semibold text-ink-muted"
+              className="flex-none rounded-2xl border border-border bg-surface px-4 text-[13.5px] font-semibold text-ink-muted"
             >
-              모르겠어요, 건너뛰기
+              모르겠어요
             </button>
-          </>
+          </div>
         ) : (
           <button
             type="button"
-            onClick={next}
-            className="rounded-2xl bg-primary p-[15px] text-[15.5px] font-bold text-white"
+            onClick={redoCurrent}
+            className="p-2 text-center text-[12.5px] font-semibold text-primary"
           >
-            다음 문제
+            ✏️ 답 고치기
           </button>
         )}
+
+        <div className="mt-3 flex items-center justify-between gap-2.5">
+          <button
+            type="button"
+            onClick={() => goTo(qIndex - 1)}
+            disabled={qIndex === 0}
+            className="flex items-center gap-1 rounded-2xl border border-border bg-surface px-4 py-2.5 text-[13.5px] font-semibold text-ink disabled:opacity-30"
+          >
+            <ChevronLeftIcon width={16} height={16} />
+            이전
+          </button>
+          <button
+            type="button"
+            onClick={handleNext}
+            disabled={qIndex < questions.length - 1 && feedback === 'idle'}
+            className="flex items-center gap-1 rounded-2xl border border-border bg-surface px-4 py-2.5 text-[13.5px] font-semibold text-ink disabled:opacity-30"
+          >
+            {qIndex === questions.length - 1 ? (
+              '테스트 마치기'
+            ) : (
+              <>
+                다음
+                <ChevronRightIcon width={16} height={16} />
+              </>
+            )}
+          </button>
+        </div>
       </div>
+
+      <ConfirmDialog
+        open={exitDialogOpen}
+        title="테스트를 종료할까요?"
+        description="지금까지 답한 내용이 사라지고, 다음엔 처음부터 다시 풀어야 해요."
+        confirmLabel="종료하기"
+        cancelLabel="계속 풀기"
+        danger
+        onConfirm={confirmExit}
+        onCancel={() => setExitDialogOpen(false)}
+      />
+      <ConfirmDialog
+        open={finishDialogOpen}
+        title="아직 안 푼 문제가 있어요"
+        description={`${questions.length - answeredCount}문제를 안 풀었어요. 그래도 제출할까요? 안 푼 문제는 오답으로 처리돼요.`}
+        confirmLabel="제출하기"
+        cancelLabel="이어서 풀기"
+        onConfirm={doFinish}
+        onCancel={() => setFinishDialogOpen(false)}
+      />
     </div>
   )
 }
@@ -545,51 +703,6 @@ function SpellingQuestion({ question, answer, setAnswer, feedback, speak, speaki
       </div>
 
       <FeedbackBanner feedback={feedback} correctText={`${word.term} = ${word.meaning}`} wrongText={`정답은 ${word.term} 예요`} />
-    </>
-  )
-}
-
-function MeaningQuestion({ question, answer, setAnswer, feedback, speak, speakingTerm }: QuestionProps) {
-  const { word } = question
-  return (
-    <>
-      <div className="flex justify-center">
-        <span className="rounded-full bg-accent-tint px-3.5 py-1.5 text-[12.5px] font-bold text-accent-dark">
-          영어 단어를 보고 뜻을 한글로 써보세요
-        </span>
-      </div>
-
-      <div className="mt-6 rounded-[22px] border border-border bg-surface p-8 text-center">
-        {(word.partOfSpeech || word.isIdiom) && (
-          <span className="rounded-md bg-surface-alt px-2 py-0.5 text-[11px] font-bold text-ink-muted">
-            {word.partOfSpeech ?? '숙어'}
-          </span>
-        )}
-        <div className="mt-3.5 flex items-center justify-center gap-2.5">
-          <div className="font-display text-[33px] font-bold leading-tight">{word.term}</div>
-          <button
-            type="button"
-            aria-label="발음 듣기"
-            onClick={() => speak(word.term)}
-            className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-full bg-primary-tint text-primary"
-          >
-            <SpeakerIcon width={16} height={16} className={speakingTerm === word.term ? 'animate-speak' : ''} />
-          </button>
-        </div>
-      </div>
-
-      <div className="mt-6">
-        <input
-          value={answer}
-          onChange={(e) => setAnswer(e.target.value)}
-          disabled={feedback !== 'idle'}
-          placeholder="한글 뜻을 입력하세요"
-          autoFocus
-          className="w-full rounded-2xl border-[1.5px] border-border bg-surface p-3.5 text-center text-lg font-semibold outline-none focus:border-primary"
-        />
-      </div>
-
-      <FeedbackBanner feedback={feedback} correctText={`${word.term} = ${word.meaning}`} wrongText={`정답은 "${word.meaning}" 예요`} />
     </>
   )
 }

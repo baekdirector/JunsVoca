@@ -85,6 +85,11 @@ export function updateWordSetTitle(wordSetId: number, title: string): Promise<vo
   return api(`/wordsets/${wordSetId}`, { method: 'PATCH', body: JSON.stringify({ title }) })
 }
 
+/** 단어장별로 완료한 테스트(1라운드) 횟수. 여러 단어장을 묶어 본 테스트는 포함되지 않는다. */
+export function getWordSetAttemptCounts(): Promise<Array<{ wordSetId: number; count: number }>> {
+  return api('/wordsets/attempt-counts')
+}
+
 export function getWordsBySet(wordSetId: number): Promise<WordRecord[]> {
   return api(`/wordsets/${wordSetId}/words`)
 }

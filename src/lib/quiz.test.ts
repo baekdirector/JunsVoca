@@ -78,6 +78,20 @@ describe('checkAnswer', () => {
   it('빈 답은 오답이다', () => {
     expect(checkAnswer(q(words[0], 'spelling'), '   ')).toBe(false)
   })
+
+  it('동사의 평서형 현재 활용(...ㄴ다/는다)도 정답으로 인정한다', () => {
+    expect(checkAnswer(q(word(6, 'look like', '...처럼 보이다'), 'meaning'), '처럼 보인다')).toBe(true)
+    expect(checkAnswer(q(word(7, 'eat', '먹다'), 'meaning'), '먹는다')).toBe(true)
+    expect(checkAnswer(q(word(8, 'live', '살다'), 'meaning'), '산다')).toBe(true) // ㄹ 탈락
+    expect(checkAnswer(q(word(9, 'make', '만들다'), 'meaning'), '만든다')).toBe(true) // ㄹ 탈락
+    expect(checkAnswer(q(words[2], 'meaning'), '포기한다')).toBe(true) // 포기하다 → 포기한다
+    // 사전형으로 답해도 여전히 정답이다.
+    expect(checkAnswer(q(word(7, 'eat', '먹다'), 'meaning'), '먹다')).toBe(true)
+  })
+
+  it('동사 활용형이 우연히 다른 뜻과 겹치지 않는 한 관계없는 답은 여전히 오답이다', () => {
+    expect(checkAnswer(q(word(6, 'look like', '...처럼 보이다'), 'meaning'), '전혀 다른 뜻')).toBe(false)
+  })
 })
 
 describe('날짜 표시', () => {

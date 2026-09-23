@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ArrowLeftIcon, CheckIcon } from '../components/icons'
 import { Loading } from '../components/Loading'
-import { getWordSets } from '../lib/db'
+import { getWordSetAttemptCounts, getWordSets } from '../lib/db'
 import { loadWordSetsCache, saveWordSetsCache, type WordSetItem } from '../lib/wordSetsCache'
 import { formatDate } from '../lib/quiz'
+import { peekQuizProgress } from '../lib/quizProgress'
 
 type SortOrder = 'newest' | 'oldest'
 
@@ -24,6 +25,7 @@ export function TestSelect() {
   const [sets, setSets] = useState<WordSetItem[] | null>(loadWordSetsCache)
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [sort, setSort] = useState<SortOrder>(loadSort)
+  const [attemptCounts, setAttemptCounts] = useState<Map<number, number>>(new Map())
 
   useEffect(() => {
     getWordSets()
@@ -34,6 +36,9 @@ export function TestSelect() {
         setSelected((prev) => new Set([...prev].filter((id) => fresh.some((s) => s.id === id))))
       })
       .catch(() => setSets((prev) => prev ?? []))
+    getWordSetAttemptCounts()
+      .then((rows) => setAttemptCounts(new Map(rows.map((r) => [r.wordSetId, r.count]))))
+      .catch(() => {})
   }, [])
 
   const allSelected = sets !== null && sets.length > 0 && sets.every((s) => selected.has(s.id))
@@ -73,20 +78,63 @@ export function TestSelect() {
   }
 
   return (
-    <div className="flex min-h-svh flex-col bg-bg">
-      <div className="flex flex-none items-center gap-3 px-[18px] pt-[18px]">
-        <button
-          type="button"
-          aria-label="홈으로"
-          onClick={() => navigate('/')}
-          className="flex h-[38px] w-[38px] items-center justify-center rounded-full text-ink"
-        >
-          <ArrowLeftIcon />
-        </button>
-        <h2 className="m-0 text-[17px] font-bold">테스트할 단어장 고르기</h2>
+    <div className="flex h-svh flex-col overflow-hidden bg-bg">
+      <div className="flex-none px-[18px] pt-[18px]">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            aria-label="홈으로"
+            onClick={() => navigate('/')}
+            className="flex h-[38px] w-[38px] items-center justify-center rounded-full text-ink"
+          >
+            <ArrowLeftIcon />
+          </button>
+          <h2 className="m-0 text-[17px] font-bold">테스트할 단어장 고르기</h2>
+        </div>
       </div>
 
-      <div className="flex flex-1 flex-col gap-2.5 px-[22px] pb-6 pt-4">
+      {sets !== null && sets.length > 0 && (
+        <div className="flex-none px-[22px] pb-2 pt-3">
+          <p className="m-0 text-[13px] text-ink-muted">여러 개를 골라 한 번에 테스트할 수 있어요.</p>
+          <div className="mt-2.5 flex items-center justify-between">
+            <span className="text-[13.5px] text-ink-muted">
+              <b className="text-ink">{selected.size}</b> / {sets.length}개 선택
+            </span>
+            <div className="flex flex-none items-center gap-1.5">
+              <div role="radiogroup" aria-label="정렬" className="flex rounded-[10px] bg-surface-alt p-0.5">
+                {(
+                  [
+                    ['newest', '최신순'],
+                    ['oldest', '오래된순'],
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    role="radio"
+                    aria-checked={sort === value}
+                    onClick={() => changeSort(value)}
+                    className={`rounded-[8px] px-2.5 py-1.5 text-[12.5px] font-bold ${
+                      sort === value ? 'bg-surface text-primary shadow-sm' : 'text-ink-muted'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={toggleAll}
+                className="rounded-[10px] bg-surface-alt px-3 py-1.5 text-[12.5px] font-bold text-primary"
+              >
+                {allSelected ? '전체 해제' : '전체 선택'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="flex-1 overflow-y-auto px-[22px] pb-4">
         {sets === null ? (
           <Loading />
         ) : sets.length === 0 ? (
@@ -97,46 +145,11 @@ export function TestSelect() {
             </Link>
           </div>
         ) : (
-          <>
-            <p className="m-0 text-[13px] text-ink-muted">여러 개를 골라 한 번에 테스트할 수 있어요.</p>
-            <div className="flex items-center justify-between">
-              <span className="text-[13.5px] text-ink-muted">
-                <b className="text-ink">{selected.size}</b> / {sets.length}개 선택
-              </span>
-              <div className="flex flex-none items-center gap-1.5">
-                <div role="radiogroup" aria-label="정렬" className="flex rounded-[10px] bg-surface-alt p-0.5">
-                  {(
-                    [
-                      ['newest', '최신순'],
-                      ['oldest', '오래된순'],
-                    ] as const
-                  ).map(([value, label]) => (
-                    <button
-                      key={value}
-                      type="button"
-                      role="radio"
-                      aria-checked={sort === value}
-                      onClick={() => changeSort(value)}
-                      className={`rounded-[8px] px-2.5 py-1.5 text-[12.5px] font-bold ${
-                        sort === value ? 'bg-surface text-primary shadow-sm' : 'text-ink-muted'
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  onClick={toggleAll}
-                  className="rounded-[10px] bg-surface-alt px-3 py-1.5 text-[12.5px] font-bold text-primary"
-                >
-                  {allSelected ? '전체 해제' : '전체 선택'}
-                </button>
-              </div>
-            </div>
-
+          <div className="flex flex-col gap-2.5">
             {sortedSets.map((s) => {
               const checked = selected.has(s.id)
+              const progress = peekQuizProgress(String(s.id))
+              const attempts = attemptCounts.get(s.id) ?? 0
               return (
                 <button
                   key={s.id}
@@ -157,14 +170,21 @@ export function TestSelect() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[16px] font-bold">{s.title}</div>
-                    <div className="mt-0.5 text-[12.5px] font-normal text-ink-muted">
-                      단어 {s.count}개 · {formatDate(s.createdAt)}
+                    <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[12.5px] font-normal text-ink-muted">
+                      <span>단어 {s.count}개</span>
+                      <span>· {formatDate(s.createdAt)}</span>
+                      {attempts > 0 && <span>· 테스트 {attempts}회 완료</span>}
                     </div>
+                    {progress && (
+                      <div className="mt-1 inline-flex items-center gap-1 rounded-full bg-accent-tint px-2 py-0.5 text-[11.5px] font-bold text-accent-dark">
+                        이어서 풀 수 있어요 · {progress.answered}/{progress.total}
+                      </div>
+                    )}
                   </div>
                 </button>
               )
             })}
-          </>
+          </div>
         )}
       </div>
 

@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { BookIcon, ChevronRightIcon, PencilIcon, PlusIcon } from '../components/icons'
 import { BottomNav } from '../components/BottomNav'
 import { Loading } from '../components/Loading'
-import { getWordSets, updateWordSetTitle } from '../lib/db'
+import { getWordSetAttemptCounts, getWordSets, updateWordSetTitle } from '../lib/db'
 import { loadWordSetsCache, saveWordSetsCache, type WordSetItem } from '../lib/wordSetsCache'
 import { useSlowLoading } from '../lib/useSlowLoading'
 
@@ -15,6 +15,7 @@ export function WordSets() {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [draftTitle, setDraftTitle] = useState('')
   const [error, setError] = useState('')
+  const [attemptCounts, setAttemptCounts] = useState<Map<number, number>>(new Map())
   const slow = useSlowLoading(refreshing && sets !== null)
 
   useEffect(() => {
@@ -25,6 +26,9 @@ export function WordSets() {
       })
       .catch(() => setSets((prev) => prev ?? []))
       .finally(() => setRefreshing(false))
+    getWordSetAttemptCounts()
+      .then((rows) => setAttemptCounts(new Map(rows.map((r) => [r.wordSetId, r.count]))))
+      .catch(() => {})
   }, [])
 
   function startEditing(set: WordSetItem) {
@@ -125,6 +129,7 @@ export function WordSets() {
                         <div className="truncate text-[15.5px] font-bold">{s.title}</div>
                         <div className="mt-0.5 text-[12.5px] text-ink-muted">
                           단어 {s.count}개 · {new Date(s.createdAt).toLocaleDateString('ko-KR')}
+                          {(attemptCounts.get(s.id) ?? 0) > 0 && ` · 테스트 ${attemptCounts.get(s.id)}회 완료`}
                         </div>
                         {s.id === savedId && (
                           <div className="mt-0.5 text-[12.5px] font-bold text-primary">방금 저장했어요</div>

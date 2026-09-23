@@ -99,6 +99,18 @@ router.get('/wordsets/latest', async (_req, res) => {
   res.json(rows[0] ?? null)
 })
 
+router.get('/wordsets/attempt-counts', async (_req, res) => {
+  // 단어장 하나로만 진행한 테스트(1라운드 기준)의 횟수. 여러 단어장을 묶어서 본 테스트는
+  // 특정 단어장 하나에 속하지 않으므로(word_set_id NULL) 세지 않는다.
+  const { rows } = await pool.query(`
+    SELECT word_set_id AS "wordSetId", COUNT(DISTINCT group_id)::int AS count
+    FROM quiz_sessions
+    WHERE round = 1 AND word_set_id IS NOT NULL
+    GROUP BY word_set_id
+  `)
+  res.json(rows)
+})
+
 router.get('/wordsets/:id', async (req, res) => {
   const { rows } = await pool.query(`SELECT id, title, created_at AS "createdAt" FROM word_sets WHERE id = $1`, [
     req.params.id,
