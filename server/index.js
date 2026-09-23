@@ -22,8 +22,16 @@ app.use(express.json())
 
 app.get('/healthz', (_req, res) => res.status(200).send('ok'))
 
-// 지금 떠 있는 배포가 어느 커밋인지 확인용 (Render가 RENDER_GIT_COMMIT을 넣어준다).
-app.get('/api/version', (_req, res) => res.json({ commit: process.env.RENDER_GIT_COMMIT ?? 'dev' }))
+// 지금 떠 있는 배포가 어느 버전인지 확인용.
+// Render는 커밋 해시(RENDER_GIT_COMMIT)를, Cloud Run은 리비전 이름(K_REVISION,
+// 예: junsvoca-00010-6vs)을 자동으로 넣어준다.
+app.get('/api/version', (_req, res) =>
+  res.json({
+    commit: process.env.RENDER_GIT_COMMIT ?? 'dev',
+    revision: process.env.K_REVISION ?? null,
+    platform: process.env.K_SERVICE ? 'cloud-run' : process.env.RENDER_GIT_COMMIT ? 'render' : 'unknown',
+  }),
+)
 
 app.use('/api', router)
 
