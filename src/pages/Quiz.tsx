@@ -233,15 +233,6 @@ export function Quiz() {
     })
   }
 
-  /** 이미 채점된 문제를 다시 풀 수 있게 되돌린다 (실수로 잘못 답했을 때 고치는 용도). */
-  function redoCurrent() {
-    setAnswers((prev) => {
-      const next = [...prev]
-      next[qIndex] = null
-      return next
-    })
-  }
-
   function handleNext() {
     if (qIndex === questions.length - 1) {
       requestFinish()
@@ -524,7 +515,7 @@ export function Quiz() {
 
         <div className="flex-1" />
 
-        {feedback === 'idle' ? (
+        {feedback === 'idle' && (
           <div className="flex gap-2.5">
             <button
               type="button"
@@ -541,14 +532,6 @@ export function Quiz() {
               모르겠어요
             </button>
           </div>
-        ) : (
-          <button
-            type="button"
-            onClick={redoCurrent}
-            className="p-2 text-center text-[12.5px] font-semibold text-primary"
-          >
-            ✏️ 답 고치기
-          </button>
         )}
 
         <div className="mt-3 flex items-center justify-between gap-2.5">
