@@ -91,4 +91,24 @@ export async function migrate() {
   } catch (err) {
     console.error('wrong_notes backfill failed (continuing)', err)
   }
+
+  // 같은 라운드가 중복 저장된 예전 기록 때문에 부풀려진 오답 노트의 틀린 횟수를, 중복을
+  // 뺀(가장 먼저 저장된 것만) 기록 기준으로 다시 맞춘다. 원본 기록은 건드리지 않고, 몇 번을
+  // 실행해도 같은 결과가 나온다. 실패해도 서버 시작을 막지 않는다.
+  try {
+    await pool.query(`
+      UPDATE wrong_notes n SET wrong_count = c.cnt
+      FROM (
+        SELECT a.word_id, COUNT(*)::int AS cnt
+        FROM quiz_answers a
+        JOIN quiz_sessions s ON s.id = a.session_id
+        WHERE a.correct = false
+          AND s.id = (SELECT MIN(d.id) FROM quiz_sessions d WHERE d.group_id = s.group_id AND d.round = s.round)
+        GROUP BY a.word_id
+      ) c
+      WHERE n.word_id = c.word_id AND n.wrong_count <> c.cnt
+    `)
+  } catch (err) {
+    console.error('wrong_notes recount failed (continuing)', err)
+  }
 }

@@ -42,13 +42,22 @@ function summarizeAttempts(sessions) {
   return attempts
 }
 
+/**
+ * 같은 테스트(group_id)의 같은 라운드가 여러 번 저장된 기록이 있다. 예전에는 "마치기"를
+ * 여러 번 누르면 그때마다 다시 저장됐기 때문이다. 집계(소요 시간, 정답률, 틀린 횟수)에는
+ * 가장 먼저 저장된 하나만 쓰고, 나머지 중복은 원본만 남겨 두고 세지 않는다.
+ * `s`는 quiz_sessions의 별칭이어야 한다.
+ */
+const FIRST_SAVE_ONLY = `s.id = (SELECT MIN(d.id) FROM quiz_sessions d WHERE d.group_id = s.group_id AND d.round = s.round)`
+
 async function fetchAllSessions() {
   const { rows } = await pool.query(`
-    SELECT id, group_id AS "groupId", word_set_id AS "wordSetId", word_set_title AS "wordSetTitle",
-           round, started_at AS "startedAt", finished_at AS "finishedAt", duration_ms AS "durationMs",
-           total_questions AS "totalQuestions", correct_count AS "correctCount", wrong_count AS "wrongCount"
-    FROM quiz_sessions
-    ORDER BY started_at DESC
+    SELECT s.id, s.group_id AS "groupId", s.word_set_id AS "wordSetId", s.word_set_title AS "wordSetTitle",
+           s.round, s.started_at AS "startedAt", s.finished_at AS "finishedAt", s.duration_ms AS "durationMs",
+           s.total_questions AS "totalQuestions", s.correct_count AS "correctCount", s.wrong_count AS "wrongCount"
+    FROM quiz_sessions s
+    WHERE ${FIRST_SAVE_ONLY}
+    ORDER BY s.started_at DESC
   `)
   return rows
 }
@@ -207,6 +216,18 @@ router.post('/quiz-rounds', async (req, res) => {
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
+    // 같은 라운드가 동시에/반복해서 들어와도 한 번만 저장한다 (연타, 재시도, 네트워크 재전송).
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`${groupId}:${round}`])
+    const {
+      rows: [existing],
+    } = await client.query(`SELECT id FROM quiz_sessions WHERE group_id = $1 AND round = $2 ORDER BY id LIMIT 1`, [
+      groupId,
+      round,
+    ])
+    if (existing) {
+      await client.query('COMMIT')
+      return res.json({ sessionId: existing.id, duplicate: true })
+    }
     const {
       rows: [session],
     } = await client.query(
@@ -241,10 +262,10 @@ router.get('/attempts', async (_req, res) => {
 
 router.get('/attempts/:groupId', async (req, res) => {
   const { rows: rounds } = await pool.query(
-    `SELECT id, group_id AS "groupId", word_set_id AS "wordSetId", word_set_title AS "wordSetTitle",
-            round, started_at AS "startedAt", finished_at AS "finishedAt", duration_ms AS "durationMs",
-            total_questions AS "totalQuestions", correct_count AS "correctCount", wrong_count AS "wrongCount"
-     FROM quiz_sessions WHERE group_id = $1 ORDER BY round`,
+    `SELECT s.id, s.group_id AS "groupId", s.word_set_id AS "wordSetId", s.word_set_title AS "wordSetTitle",
+            s.round, s.started_at AS "startedAt", s.finished_at AS "finishedAt", s.duration_ms AS "durationMs",
+            s.total_questions AS "totalQuestions", s.correct_count AS "correctCount", s.wrong_count AS "wrongCount"
+     FROM quiz_sessions s WHERE s.group_id = $1 AND ${FIRST_SAVE_ONLY} ORDER BY s.round`,
     [req.params.groupId],
   )
   const sessionIds = rounds.map((r) => r.id)
@@ -263,7 +284,10 @@ router.get('/attempts/:groupId', async (req, res) => {
 router.get('/missed-words', async (req, res) => {
   const limit = Number(req.query.limit) || 5
   const { rows: wrongAnswers } = await pool.query(
-    `SELECT term, meaning FROM quiz_answers WHERE correct = false`,
+    `SELECT a.term, a.meaning
+     FROM quiz_answers a
+     JOIN quiz_sessions s ON s.id = a.session_id
+     WHERE a.correct = false AND ${FIRST_SAVE_ONLY}`,
   )
   const counts = new Map()
   for (const a of wrongAnswers) {

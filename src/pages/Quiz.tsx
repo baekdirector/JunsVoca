@@ -107,8 +107,12 @@ export function Quiz() {
   const [roundResult, setRoundResult] = useState<RoundResult | null>(null)
   const [exitDialogOpen, setExitDialogOpen] = useState(false)
   const [finishDialogOpen, setFinishDialogOpen] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState('')
 
   const savedTitleRef = useRef('')
+  // 결과를 서버에 저장하는 중인지. 저장이 느릴 때 "마치기"를 여러 번 눌러도 한 번만 저장되게 한다.
+  const submittingRef = useRef(false)
   // 이 라운드에서 화면을 켜 둔 채 실제로 푼 시간(ms). 나갔다가 이어서 풀 때 그 사이 시간이
   // 소요 시간에 들어가지 않도록, 시작~종료 시각 차이 대신 이 값을 쓴다.
   const elapsedRef = useRef(0)
@@ -229,6 +233,9 @@ export function Quiz() {
     setRound(roundNumber)
     setRoundStartedAt(Date.now())
     elapsedRef.current = 0
+    submittingRef.current = false
+    setSubmitting(false)
+    setSubmitError('')
     setPhase('asking')
   }
 
@@ -272,6 +279,11 @@ export function Quiz() {
   }
 
   async function finishRound(finalAnswers: AnswerLog[]) {
+    if (submittingRef.current) return
+    submittingRef.current = true
+    setSubmitting(true)
+    setSubmitError('')
+
     const finishedAt = Date.now()
     const correctCount = finalAnswers.filter((a) => a.correct).length
     const wrongAnswers = finalAnswers.filter((a) => !a.correct)
@@ -279,16 +291,24 @@ export function Quiz() {
     if (round === 1) setFirstRound(resultFirstRound)
 
     const durationMs = elapsedRef.current
-    await recordQuizRound({
-      groupId,
-      wordSetId: singleId,
-      wordSetTitle,
-      round,
-      // 서버는 소요 시간을 finishedAt - startedAt으로 계산하므로, 실제로 푼 시간이 나오게 맞춘다.
-      startedAt: finishedAt - durationMs,
-      finishedAt,
-      answers: finalAnswers,
-    })
+    try {
+      await recordQuizRound({
+        groupId,
+        wordSetId: singleId,
+        wordSetTitle,
+        round,
+        // 서버는 소요 시간을 finishedAt - startedAt으로 계산하므로, 실제로 푼 시간이 나오게 맞춘다.
+        startedAt: finishedAt - durationMs,
+        finishedAt,
+        answers: finalAnswers,
+      })
+    } catch {
+      // 저장에 실패하면 다시 눌러 재시도할 수 있게 풀어준다. (서버는 같은 라운드 중복 저장을 무시한다)
+      submittingRef.current = false
+      setSubmitting(false)
+      setSubmitError('결과를 저장하지 못했어요. 인터넷 연결을 확인하고 다시 눌러주세요.')
+      return
+    }
     clearQuizProgress(idsKey) // 서버에 남겼으니 기기의 임시 저장은 지운다
 
     setRoundResult({
@@ -552,6 +572,8 @@ export function Quiz() {
           </div>
         )}
 
+        {submitError && <p className="m-0 mt-2 text-center text-[12.5px] font-semibold text-error">{submitError}</p>}
+
         <div className="mt-3 flex items-center justify-between gap-2.5">
           <button
             type="button"
@@ -565,11 +587,11 @@ export function Quiz() {
           <button
             type="button"
             onClick={handleNext}
-            disabled={qIndex < questions.length - 1 && feedback === 'idle'}
+            disabled={submitting || (qIndex < questions.length - 1 && feedback === 'idle')}
             className="flex items-center gap-1 rounded-2xl border border-border bg-surface px-4 py-2.5 text-[13.5px] font-semibold text-ink disabled:opacity-30"
           >
             {qIndex === questions.length - 1 ? (
-              '테스트 마치기'
+              submitting ? '저장 중...' : '테스트 마치기'
             ) : (
               <>
                 다음
@@ -594,7 +616,7 @@ export function Quiz() {
         open={finishDialogOpen}
         title="아직 안 푼 문제가 있어요"
         description={`${questions.length - answeredCount}문제를 안 풀었어요. 그래도 제출할까요? 안 푼 문제는 오답으로 처리돼요.`}
-        confirmLabel="제출하기"
+        confirmLabel={submitting ? '저장 중...' : '제출하기'}
         cancelLabel="이어서 풀기"
         onConfirm={doFinish}
         onCancel={() => setFinishDialogOpen(false)}
