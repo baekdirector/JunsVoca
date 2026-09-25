@@ -2,17 +2,33 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ArrowLeftIcon, CheckIcon, InfoIcon, XIcon } from '../components/icons'
 import { getAttemptDetail, type QuizAnswerRecord, type QuizSessionRecord } from '../lib/db'
+import { LoadError } from '../components/LoadError'
 import { Loading } from '../components/Loading'
 import { formatDateTime, formatMinSec } from '../lib/quiz'
 
 export function ParentSessionDetail() {
   const { groupId } = useParams<{ groupId: string }>()
   const [data, setData] = useState<{ rounds: QuizSessionRecord[]; answers: QuizAnswerRecord[] } | null>(null)
+  const [failed, setFailed] = useState(false)
 
-  useEffect(() => {
+  function fetchDetail() {
     if (!groupId) return
-    getAttemptDetail(groupId).then(setData)
-  }, [groupId])
+    getAttemptDetail(groupId)
+      .then(setData)
+      .catch(() => setFailed(true))
+  }
+
+  useEffect(fetchDetail, [groupId])
+
+  function retry() {
+    setFailed(false)
+    setData(null)
+    fetchDetail()
+  }
+
+  if (failed) {
+    return <LoadError screen message="테스트 결과를 불러오지 못했어요." onRetry={retry} />
+  }
 
   if (!data) {
     return <Loading screen />

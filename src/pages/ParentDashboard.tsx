@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeftIcon, ClockIcon, StarIcon, BookIcon, CheckCircleIcon } from '../components/icons'
 import { getAttempts, getMissedWordCounts, type AttemptSummary } from '../lib/db'
-import { Loading } from '../components/Loading'
+import { LoadError } from '../components/LoadError'
+import { Loading, Spinner } from '../components/Loading'
 import { formatMinSec, formatShortDate, formatTime } from '../lib/quiz'
 
 // Frozen at module load -- the "this week" window doesn't need to tick live.
@@ -19,12 +20,31 @@ function accuracyClasses(accuracy: number) {
 
 export function ParentDashboard() {
   const [attempts, setAttempts] = useState<AttemptSummary[] | null>(null)
-  const [missed, setMissed] = useState<Array<{ term: string; meaning: string; wrong: number }>>([])
+  // null이면 아직 불러오는 중이다. ("데이터가 없어요"와 구분해서 그동안 스피너를 보여준다.)
+  const [missed, setMissed] = useState<Array<{ term: string; meaning: string; wrong: number }> | null>(null)
+  const [failed, setFailed] = useState(false)
 
-  useEffect(() => {
-    getAttempts().then(setAttempts)
-    getMissedWordCounts(5).then(setMissed)
-  }, [])
+  function fetchAll() {
+    getAttempts()
+      .then(setAttempts)
+      .catch(() => setFailed(true))
+    getMissedWordCounts(5)
+      .then(setMissed)
+      .catch(() => setMissed([]))
+  }
+
+  useEffect(fetchAll, [])
+
+  function retry() {
+    setFailed(false)
+    setAttempts(null)
+    setMissed(null)
+    fetchAll()
+  }
+
+  if (failed) {
+    return <LoadError screen message="리포트를 불러오지 못했어요." onRetry={retry} />
+  }
 
   if (!attempts) {
     return <Loading screen />
@@ -105,7 +125,12 @@ export function ParentDashboard() {
           <div className="rounded-2xl border border-border bg-surface p-4.5">
             <h3 className="m-0 text-[15px] font-bold">자주 틀리는 단어 TOP 5</h3>
             <p className="mb-3.5 mt-1 text-[12px] text-ink-muted">누적 기준</p>
-            {missed.length === 0 ? (
+            {missed === null ? (
+              <div className="flex items-center justify-center gap-2 py-4 text-[12.5px] text-ink-muted">
+                <Spinner size={18} />
+                불러오는 중...
+              </div>
+            ) : missed.length === 0 ? (
               <p className="text-[12.5px] text-ink-muted">아직 데이터가 충분하지 않아요.</p>
             ) : (
               <div className="flex flex-col gap-3">

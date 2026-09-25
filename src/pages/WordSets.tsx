@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { BookIcon, ChevronRightIcon, PencilIcon, PlusIcon } from '../components/icons'
 import { BottomNav } from '../components/BottomNav'
-import { Loading } from '../components/Loading'
+import { Loading, Spinner } from '../components/Loading'
 import { getWordSetAttemptCounts, getWordSets, updateWordSetTitle } from '../lib/db'
 import { loadWordSetsCache, saveWordSetsCache, type WordSetItem } from '../lib/wordSetsCache'
 import { useSlowLoading } from '../lib/useSlowLoading'
@@ -13,6 +13,7 @@ export function WordSets() {
   const [sets, setSets] = useState<WordSetItem[] | null>(loadWordSetsCache)
   const [refreshing, setRefreshing] = useState(true)
   const [editingId, setEditingId] = useState<number | null>(null)
+  const [renaming, setRenaming] = useState(false)
   const [draftTitle, setDraftTitle] = useState('')
   const [error, setError] = useState('')
   const [attemptCounts, setAttemptCounts] = useState<Map<number, number>>(new Map())
@@ -43,6 +44,7 @@ export function WordSets() {
       setEditingId(null)
       return
     }
+    setRenaming(true)
     try {
       await updateWordSetTitle(set.id, title)
       const next = (sets ?? []).map((s) => (s.id === set.id ? { ...s, title } : s))
@@ -51,6 +53,8 @@ export function WordSets() {
       setEditingId(null)
     } catch {
       setError('이름을 저장하지 못했어요. 잠시 후 다시 시도해주세요.')
+    } finally {
+      setRenaming(false)
     }
   }
 
@@ -107,14 +111,16 @@ export function WordSets() {
                     />
                     <button
                       type="submit"
-                      className="flex-none rounded-[10px] bg-primary px-3 py-2 text-[13px] font-bold text-white"
+                      disabled={renaming}
+                      className="flex min-w-[52px] flex-none items-center justify-center rounded-[10px] bg-primary px-3 py-2 text-[13px] font-bold text-white disabled:opacity-70"
                     >
-                      저장
+                      {renaming ? <Spinner size={16} tone="light" label="저장 중" /> : '저장'}
                     </button>
                     <button
                       type="button"
                       onClick={() => setEditingId(null)}
-                      className="flex-none rounded-[10px] bg-surface-alt px-3 py-2 text-[13px] font-semibold text-ink-muted"
+                      disabled={renaming}
+                      className="flex-none rounded-[10px] bg-surface-alt px-3 py-2 text-[13px] font-semibold text-ink-muted disabled:opacity-50"
                     >
                       취소
                     </button>

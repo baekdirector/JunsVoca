@@ -10,7 +10,9 @@ import {
   XCircleIcon,
   XIcon,
 } from '../components/icons'
+import { BlockingOverlay } from '../components/BlockingOverlay'
 import { ConfirmDialog } from '../components/ConfirmDialog'
+import { LoadError } from '../components/LoadError'
 import { Loading } from '../components/Loading'
 import { useSpeak } from '../lib/useSpeak'
 import {
@@ -30,7 +32,7 @@ import {
 
 type QuizOrder = 'shuffle' | 'ordered'
 
-type Phase = 'loading' | 'nowords' | 'setup' | 'asking' | 'round-summary'
+type Phase = 'loading' | 'error' | 'nowords' | 'setup' | 'asking' | 'round-summary'
 
 // 뜻을 자유롭게 입력받는 유형(영어→뜻)은 비슷한 말을 컴퓨터가 자동으로 알아보기 어려워
 // 채점이 애매해진다. 정확히 채점할 수 있는 "뜻→영어(철자 쓰기)"로만 출제한다.
@@ -123,62 +125,67 @@ export function Quiz() {
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      let title: string
-      let words: QuizWord[]
-      let sets = 1
-      if (wordSetIds === null) {
-        const notes = (await getWrongNotes()).filter((n) => n.resolvedAt === null)
-        title = '오답 노트'
-        words = notes.map((n) => ({
-          id: n.wordId,
-          wordSetId: n.wordSetId,
-          term: n.term,
-          meaning: n.meaning,
-          isIdiom: n.isIdiom,
-          partOfSpeech: n.partOfSpeech ?? undefined,
-        }))
-      } else {
-        const loaded = await Promise.all(
-          wordSetIds.map(async (id) => {
-            try {
-              const [set, setWords] = await Promise.all([getWordSet(id), getWordsBySet(id)])
-              return set ? { title: set.title, words: setWords } : null
-            } catch {
-              return null // 삭제되었거나 불러오지 못한 단어장은 건너뛴다
-            }
-          }),
-        )
-        const found = loaded.filter((l) => l !== null)
-        sets = found.length
-        title = found.map((l) => l.title).join(' + ')
-        words = found.flatMap((l) => l.words)
-      }
-      if (cancelled) return
-      if (words.length === 0) {
-        setPhase('nowords')
-        return
-      }
-      setWordSetTitle(title)
-      savedTitleRef.current = title
-      setAllWords(words)
-      setSetCount(sets)
+      try {
+        let title: string
+        let words: QuizWord[]
+        let sets = 1
+        if (wordSetIds === null) {
+          const notes = (await getWrongNotes()).filter((n) => n.resolvedAt === null)
+          title = '오답 노트'
+          words = notes.map((n) => ({
+            id: n.wordId,
+            wordSetId: n.wordSetId,
+            term: n.term,
+            meaning: n.meaning,
+            isIdiom: n.isIdiom,
+            partOfSpeech: n.partOfSpeech ?? undefined,
+          }))
+        } else {
+          const loaded = await Promise.all(
+            wordSetIds.map(async (id) => {
+              try {
+                const [set, setWords] = await Promise.all([getWordSet(id), getWordsBySet(id)])
+                return set ? { title: set.title, words: setWords } : null
+              } catch {
+                return null // 삭제되었거나 불러오지 못한 단어장은 건너뛴다
+              }
+            }),
+          )
+          const found = loaded.filter((l) => l !== null)
+          sets = found.length
+          title = found.map((l) => l.title).join(' + ')
+          words = found.flatMap((l) => l.words)
+        }
+        if (cancelled) return
+        if (words.length === 0) {
+          setPhase('nowords')
+          return
+        }
+        setWordSetTitle(title)
+        savedTitleRef.current = title
+        setAllWords(words)
+        setSetCount(sets)
 
-      // 풀다가 나간 테스트가 있으면 처음부터가 아니라 이어서 보여준다.
-      const saved = loadQuizProgress(idsKey)
-      if (saved) {
-        setQuestions(saved.questions)
-        setAnswers(saved.answers)
-        const resumeIndex = Math.min(saved.qIndex, saved.questions.length - 1)
-        setQIndex(resumeIndex)
-        setAnswerInput(saved.answers[resumeIndex]?.userAnswer ?? '')
-        setRound(saved.round)
-        setGroupId(saved.groupId)
-        setRoundStartedAt(saved.startedAt)
-        elapsedRef.current = saved.elapsedMs ?? 0
-        setFirstRound(saved.firstRound)
-        setPhase('asking')
-      } else {
-        setPhase('setup')
+        // 풀다가 나간 테스트가 있으면 처음부터가 아니라 이어서 보여준다.
+        const saved = loadQuizProgress(idsKey)
+        if (saved) {
+          setQuestions(saved.questions)
+          setAnswers(saved.answers)
+          const resumeIndex = Math.min(saved.qIndex, saved.questions.length - 1)
+          setQIndex(resumeIndex)
+          setAnswerInput(saved.answers[resumeIndex]?.userAnswer ?? '')
+          setRound(saved.round)
+          setGroupId(saved.groupId)
+          setRoundStartedAt(saved.startedAt)
+          elapsedRef.current = saved.elapsedMs ?? 0
+          setFirstRound(saved.firstRound)
+          setPhase('asking')
+        } else {
+          setPhase('setup')
+        }
+      } catch {
+        // 불러오기에 실패하면 스피너가 끝없이 돌지 않게 안내 화면으로 바꾼다.
+        if (!cancelled) setPhase('error')
       }
     })()
     return () => {
@@ -379,6 +386,10 @@ export function Quiz() {
 
   if (phase === 'loading') {
     return <Loading screen />
+  }
+
+  if (phase === 'error') {
+    return <LoadError screen message="테스트를 불러오지 못했어요." onRetry={() => window.location.reload()} />
   }
 
   if (phase === 'nowords') {
@@ -602,6 +613,7 @@ export function Quiz() {
         </div>
       </div>
 
+      <BlockingOverlay open={submitting} message="결과를 저장하고 있어요..." />
       <ConfirmDialog
         open={exitDialogOpen}
         title="테스트를 종료할까요?"

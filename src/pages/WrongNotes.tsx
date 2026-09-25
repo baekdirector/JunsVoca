@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { BottomNav } from '../components/BottomNav'
-import { Loading } from '../components/Loading'
+import { Loading, Spinner } from '../components/Loading'
 import { SpeakButton } from '../components/SpeakButton'
 import { getWrongNotes, setWrongNoteResolved, type WrongNote } from '../lib/db'
 import { formatDate } from '../lib/quiz'
@@ -13,6 +13,7 @@ export function WrongNotes() {
   const [notes, setNotes] = useState<WrongNote[] | null>(null)
   const [tab, setTab] = useState<Tab>('active')
   const [error, setError] = useState('')
+  const [pendingId, setPendingId] = useState<number | null>(null)
 
   useEffect(() => {
     getWrongNotes()
@@ -28,8 +29,10 @@ export function WrongNotes() {
   const shown = tab === 'active' ? active : resolved
 
   async function toggleResolved(note: WrongNote) {
+    if (pendingId !== null) return
     const nextResolved = note.resolvedAt === null
     setError('')
+    setPendingId(note.wordId)
     try {
       await setWrongNoteResolved(note.wordId, nextResolved)
       setNotes((prev) =>
@@ -37,6 +40,8 @@ export function WrongNotes() {
       )
     } catch {
       setError('저장하지 못했어요. 잠시 후 다시 시도해주세요.')
+    } finally {
+      setPendingId(null)
     }
   }
 
@@ -90,11 +95,18 @@ export function WrongNotes() {
                   <button
                     type="button"
                     onClick={() => toggleResolved(n)}
-                    className={`rounded-[10px] px-2.5 py-1.5 text-[12px] font-bold ${
+                    disabled={pendingId !== null}
+                    className={`flex min-h-[28px] items-center justify-center rounded-[10px] px-2.5 py-1.5 text-[12px] font-bold disabled:opacity-60 ${
                       n.resolvedAt === null ? 'bg-success-tint text-success' : 'bg-surface-alt text-ink-muted'
                     }`}
                   >
-                    {n.resolvedAt === null ? '외웠어요' : '다시 담기'}
+                    {pendingId === n.wordId ? (
+                      <Spinner size={14} label="저장 중" />
+                    ) : n.resolvedAt === null ? (
+                      '외웠어요'
+                    ) : (
+                      '다시 담기'
+                    )}
                   </button>
                 </div>
               </div>

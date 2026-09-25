@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { BottomNav } from '../components/BottomNav'
+import { Spinner } from '../components/Loading'
 import { BookIcon, ChartIcon, ChevronRightIcon, CheckCircleIcon, PencilIcon, StarIcon, XCircleIcon } from '../components/icons'
 import { getHomeStats, type HomeStats } from '../lib/db'
+import { useSlowLoading } from '../lib/useSlowLoading'
 
 function todayLabel() {
   const d = new Date()
@@ -12,10 +14,17 @@ function todayLabel() {
 
 export function Home() {
   const [stats, setStats] = useState<HomeStats | null>(null)
+  const [statsFailed, setStatsFailed] = useState(false)
 
   useEffect(() => {
-    getHomeStats().then(setStats).catch(() => {})
+    getHomeStats()
+      .then(setStats)
+      .catch(() => setStatsFailed(true))
   }, [])
+
+  // 통계가 오기 전에는 숫자 대신 스피너를 보여준다. (불러오기에 실패하면 스피너 대신 '–')
+  const loadingStats = stats === null && !statsFailed
+  const slow = useSlowLoading(loadingStats)
 
   return (
     <div className="flex min-h-svh flex-col bg-bg">
@@ -44,10 +53,13 @@ export function Home() {
         </div>
 
         <div className="flex gap-2.5 pt-5">
-          <StatChip icon={<StarIcon width={14} height={14} className="text-gold" />} label="연속 학습" value={stats ? `${stats.streakDays}일` : '–'} />
-          <StatChip icon={<CheckCircleIcon width={14} height={14} className="text-success" />} label="주간 정답률" value={stats ? `${stats.weeklyAccuracy}%` : '–'} />
-          <StatChip icon={<BookIcon width={14} height={14} className="text-primary" />} label="학습 단어" value={stats ? `${stats.totalWords}개` : '–'} />
+          <StatChip icon={<StarIcon width={14} height={14} className="text-gold" />} label="연속 학습" value={stats ? `${stats.streakDays}일` : loadingStats ? null : '–'} />
+          <StatChip icon={<CheckCircleIcon width={14} height={14} className="text-success" />} label="주간 정답률" value={stats ? `${stats.weeklyAccuracy}%` : loadingStats ? null : '–'} />
+          <StatChip icon={<BookIcon width={14} height={14} className="text-primary" />} label="학습 단어" value={stats ? `${stats.totalWords}개` : loadingStats ? null : '–'} />
         </div>
+        {slow && (
+          <p className="m-0 pt-2 text-center text-[12px] text-ink-muted">서버가 깨어나는 중이라 조금 걸려요. 잠시만 기다려 주세요.</p>
+        )}
 
         <div className="flex flex-col gap-3 pt-6">
           <Link
@@ -72,10 +84,17 @@ export function Home() {
             </div>
             <div className="flex-1">
               <div className="text-[16px] font-bold">오답 노트</div>
-              <div className="mt-0.5 text-[12.5px] text-ink-muted">
-                {stats && stats.wrongNoteCount > 0
-                  ? `다시 도전할 틀린 단어 ${stats.wrongNoteCount}개`
-                  : '틀린 단어가 자동으로 모여요'}
+              <div className="mt-0.5 flex items-center gap-1.5 text-[12.5px] text-ink-muted">
+                {loadingStats ? (
+                  <>
+                    <Spinner size={12} />
+                    불러오는 중...
+                  </>
+                ) : stats && stats.wrongNoteCount > 0 ? (
+                  `다시 도전할 틀린 단어 ${stats.wrongNoteCount}개`
+                ) : (
+                  '틀린 단어가 자동으로 모여요'
+                )}
               </div>
             </div>
             <ChevronRightIcon width={18} height={18} className="text-ink-muted" />
@@ -105,14 +124,16 @@ export function Home() {
   )
 }
 
-function StatChip({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function StatChip({ icon, label, value }: { icon: React.ReactNode; label: string; value: string | null }) {
   return (
     <div className="flex-1 rounded-[14px] border border-border bg-surface px-3 py-2.5">
       <div className="flex items-center gap-1 whitespace-nowrap text-[11.5px] text-ink-muted">
         {icon}
         {label}
       </div>
-      <div className="mt-0.5 text-[20px] font-extrabold">{value}</div>
+      <div className="mt-0.5 flex h-[30px] items-center text-[20px] font-extrabold">
+        {value === null ? <Spinner size={20} /> : value}
+      </div>
     </div>
   )
 }

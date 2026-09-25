@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeftIcon, PlusIcon, TrashIcon } from '../components/icons'
-import { Loading } from '../components/Loading'
+import { BlockingOverlay } from '../components/BlockingOverlay'
+import { Loading, Spinner } from '../components/Loading'
 import { SpeakButton } from '../components/SpeakButton'
 import {
   addWord as dbAddWord,
@@ -49,6 +50,10 @@ export function WordReview() {
   const [loaded, setLoaded] = useState(!isExisting)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
+  // 이미 저장된 단어장을 고치는 중에 서버로 나가는 요청 수, 그리고 그 요청이 실패했는지.
+  const [pending, setPending] = useState(0)
+  const [syncError, setSyncError] = useState('')
+  const savingRef = useRef(false)
 
   useEffect(() => {
     if (!isExisting) return
@@ -72,6 +77,19 @@ export function WordReview() {
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)))
   }
 
+  /** 서버로 나가는 요청이 끝날 때까지 상단에 스피너를 보여주고, 실패하면 알려준다. */
+  async function track(request: Promise<unknown>) {
+    setPending((n) => n + 1)
+    setSyncError('')
+    try {
+      await request
+    } catch {
+      setSyncError('변경 내용을 저장하지 못했어요. 인터넷 연결을 확인해 주세요.')
+    } finally {
+      setPending((n) => n - 1)
+    }
+  }
+
   async function commitRow(row: Row) {
     if (!isExisting || row.id === undefined) return
     const patch: Partial<Omit<WordRecord, 'id' | 'wordSetId'>> = {
@@ -79,26 +97,36 @@ export function WordReview() {
       meaning: row.meaning,
       isIdiom: isIdiom(row.term),
     }
-    await dbUpdateWord(row.id, patch)
+    await track(dbUpdateWord(row.id, patch))
   }
 
   async function removeRow(row: Row) {
     setRows((prev) => prev.filter((r) => r.key !== row.key))
     if (isExisting && row.id !== undefined) {
-      await dbDeleteWord(row.id)
+      await track(dbDeleteWord(row.id))
     }
   }
 
   async function addRow() {
     if (isExisting) {
-      const newId = await dbAddWord({ wordSetId: wordSetId!, term: '', meaning: '', isIdiom: false })
-      setRows((prev) => [...prev, { key: `db-${newId}`, id: newId, term: '', meaning: '' }])
+      setPending((n) => n + 1)
+      setSyncError('')
+      try {
+        const newId = await dbAddWord({ wordSetId: wordSetId!, term: '', meaning: '', isIdiom: false })
+        setRows((prev) => [...prev, { key: `db-${newId}`, id: newId, term: '', meaning: '' }])
+      } catch {
+        setSyncError('단어를 추가하지 못했어요. 인터넷 연결을 확인해 주세요.')
+      } finally {
+        setPending((n) => n - 1)
+      }
     } else {
       setRows((prev) => [...prev, { key: `new-${Date.now()}`, term: '', meaning: '' }])
     }
   }
 
   async function save() {
+    if (savingRef.current) return // 응답이 늦을 때 다시 눌러 단어장이 두 번 만들어지지 않게
+    savingRef.current = true
     setSaving(true)
     setSaveError('')
     try {
@@ -110,6 +138,7 @@ export function WordReview() {
       navigate('/wordsets', { state: { savedId: newId } })
     } catch {
       setSaveError('저장하지 못했어요. 잠시 후 다시 시도해주세요.')
+      savingRef.current = false
       setSaving(false)
     }
   }
@@ -133,10 +162,11 @@ export function WordReview() {
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           onBlur={() => {
-            if (isExisting) updateWordSetTitle(wordSetId!, title)
+            if (isExisting) track(updateWordSetTitle(wordSetId!, title))
           }}
-          className="m-0 flex-1 bg-transparent text-[17px] font-bold outline-none"
+          className="m-0 min-w-0 flex-1 bg-transparent text-[17px] font-bold outline-none"
         />
+        {pending > 0 && <Spinner size={18} label="저장 중" />}
       </div>
 
       <div className="flex flex-none items-center justify-between px-[22px] pb-1.5 pt-3.5">
@@ -144,6 +174,7 @@ export function WordReview() {
           총 <b className="text-ink">{rows.length}개</b> 단어 · 수정 후 저장하세요
         </span>
       </div>
+      {syncError && <p className="m-0 px-[22px] pb-1.5 text-[12.5px] font-semibold text-error">{syncError}</p>}
 
       <div className="flex flex-1 flex-col gap-2 overflow-y-auto px-[22px] pb-3.5">
         {rows.map((row, idx) => (
@@ -227,6 +258,7 @@ export function WordReview() {
           </>
         )}
       </div>
+      <BlockingOverlay open={saving} message="단어장을 저장하고 있어요..." />
     </div>
   )
 }
