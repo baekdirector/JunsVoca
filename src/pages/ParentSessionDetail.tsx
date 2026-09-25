@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { ArrowLeftIcon, CheckIcon, InfoIcon, XIcon } from '../components/icons'
 import { getAttemptDetail, type QuizAnswerRecord, type QuizSessionRecord } from '../lib/db'
 import { Loading } from '../components/Loading'
-import { formatDateTime, formatDuration } from '../lib/quiz'
+import { formatDateTime, formatMinSec } from '../lib/quiz'
 
 export function ParentSessionDetail() {
   const { groupId } = useParams<{ groupId: string }>()
@@ -54,45 +54,50 @@ export function ParentSessionDetail() {
       </div>
 
       <div className="px-5 pt-5 sm:px-10">
-        <h1 className="m-0 text-[22px] font-extrabold">{formatDateTime(firstRound.startedAt)} 테스트 결과</h1>
+        <h1 className="m-0 break-keep text-[21px] font-extrabold">{formatDateTime(firstRound.startedAt)} 테스트 결과</h1>
         <p className="mt-1.5 text-[13.5px] text-ink-muted">{firstRound.wordSetTitle}</p>
       </div>
 
-      <div className="flex gap-3 px-5 pt-4.5 sm:px-10">
+      <div className="grid grid-cols-[1fr_1fr_1fr_1.7fr] gap-2.5 px-5 pt-4.5 sm:px-10">
         <MiniStat value={String(firstRound.totalQuestions)} label="전체 문항" />
         <MiniStat value={String(firstRound.correctCount)} label="정답" tint="bg-success-tint" tintText="text-success" />
         <MiniStat value={String(firstRound.wrongCount)} label="오답" tint="bg-error-tint" tintText="text-error" />
-        <MiniStat value={formatDuration(totalDuration)} label="총 소요 시간" />
+        <MiniStat value={formatMinSec(totalDuration)} label="총 소요 시간" />
       </div>
 
       <div className="px-5 pt-5 sm:px-10">
-        <div className="overflow-x-auto rounded-2xl border border-border bg-surface">
-          <table className="w-full min-w-[520px] border-collapse text-[13.5px]">
+        <div className="overflow-hidden rounded-2xl border border-border bg-surface">
+          <table className="w-full table-fixed border-collapse text-[13px]">
+            <colgroup>
+              <col className="w-[7.5%]" />
+              <col className="w-[31%]" />
+              <col className="w-[26%]" />
+              <col className="w-[26%]" />
+              <col className="w-[9.5%]" />
+            </colgroup>
             <thead>
-              <tr className="bg-surface-alt">
-                <th className="w-10 px-3.5 py-2.5 text-left text-[11.5px] font-bold uppercase text-ink-muted">번호</th>
-                <th className="px-3.5 py-2.5 text-left text-[11.5px] font-bold uppercase text-ink-muted">유형</th>
-                <th className="px-3.5 py-2.5 text-left text-[11.5px] font-bold uppercase text-ink-muted">단어</th>
-                <th className="px-3.5 py-2.5 text-left text-[11.5px] font-bold uppercase text-ink-muted">정답</th>
-                <th className="px-3.5 py-2.5 text-left text-[11.5px] font-bold uppercase text-ink-muted">아이가 쓴 답</th>
-                <th className="w-16 px-3.5 py-2.5 text-left text-[11.5px] font-bold uppercase text-ink-muted">결과</th>
+              <tr className="bg-surface-alt text-left text-[11px] font-bold text-ink-muted">
+                <th className="whitespace-nowrap px-0.5 py-2.5 text-center">#</th>
+                <th className="px-1.5 py-2.5">단어</th>
+                <th className="px-0.5 py-2.5">정답</th>
+                <th className="px-0.5 py-2.5">쓴 답</th>
+                <th className="whitespace-nowrap px-1 py-2.5 text-center">결과</th>
               </tr>
             </thead>
             <tbody>
               {firstRoundAnswers.map((a, i) => (
                 <tr key={a.id} className={a.correct ? 'bg-success-tint' : 'bg-error-tint'}>
-                  <td className="px-3.5 py-2.5 text-ink-muted">{i + 1}</td>
-                  <td className="px-3.5 py-2.5">{a.questionType === 'spelling' ? '철자 쓰기' : '뜻 쓰기'}</td>
-                  <td className="px-3.5 py-2.5 font-display text-[15.5px] font-bold">{a.term}</td>
-                  <td className="px-3.5 py-2.5">{a.correctAnswer}</td>
-                  <td className={a.correct ? '' : 'px-3.5 py-2.5 text-error'}>
-                    {!a.correct ? (a.userAnswer || '(건너뜀)') : a.userAnswer}
+                  <td className="px-0.5 py-2 text-center text-[11.5px] text-ink-muted">{i + 1}</td>
+                  <td className="break-words px-1.5 py-2 font-display text-[12.5px] font-bold">{a.term}</td>
+                  <td className="break-words px-0.5 py-2 text-[12px]">{a.correctAnswer}</td>
+                  <td className={`break-words px-0.5 py-2 text-[12px] ${a.correct ? '' : 'text-error'}`}>
+                    {!a.correct ? a.userAnswer || '(건너뜀)' : a.userAnswer}
                   </td>
-                  <td className="px-3.5 py-2.5">
+                  <td className="px-1 py-2 text-center">
                     {a.correct ? (
-                      <CheckIcon width={18} height={18} className="text-success" strokeWidth={2.2} />
+                      <CheckIcon width={17} height={17} className="inline text-success" strokeWidth={2.2} />
                     ) : (
-                      <XIcon width={18} height={18} className="text-error" strokeWidth={2.2} />
+                      <XIcon width={17} height={17} className="inline text-error" strokeWidth={2.2} />
                     )}
                   </td>
                 </tr>
@@ -128,9 +133,9 @@ function MiniStat({
   tintText?: string
 }) {
   return (
-    <div className={`flex-1 rounded-2xl border border-border p-3 text-center ${tint}`}>
-      <div className={`text-lg font-extrabold ${tintText}`}>{value}</div>
-      <div className={`mt-0.5 text-[11.5px] ${tintText === 'text-ink' ? 'text-ink-muted' : tintText}`}>{label}</div>
+    <div className={`min-w-0 rounded-2xl border border-border px-1.5 py-3 text-center ${tint}`}>
+      <div className={`whitespace-nowrap text-[17px] font-extrabold ${tintText}`}>{value}</div>
+      <div className={`mt-0.5 whitespace-nowrap text-[11px] ${tintText === 'text-ink' ? 'text-ink-muted' : tintText}`}>{label}</div>
     </div>
   )
 }

@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeftIcon, ChevronRightIcon, ClockIcon, StarIcon, BookIcon, CheckCircleIcon } from '../components/icons'
+import { ArrowLeftIcon, ClockIcon, StarIcon, BookIcon, CheckCircleIcon } from '../components/icons'
 import { getAttempts, getMissedWordCounts, type AttemptSummary } from '../lib/db'
 import { Loading } from '../components/Loading'
-import { formatDate, formatDuration, formatTime } from '../lib/quiz'
+import { formatMinSec, formatShortDate, formatTime } from '../lib/quiz'
 
 // Frozen at module load -- the "this week" window doesn't need to tick live.
 const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
+
+// 날짜 | 단어장 | 정답률 | 소요시간 — 모바일 폭에 가로 스크롤 없이 들어가도록 고정 폭 + 남는 폭은 단어장이 차지한다.
+const ROW_GRID = 'grid grid-cols-[3.4rem_minmax(0,1fr)_3.1rem_4.8rem] items-center gap-x-2 px-3'
 
 function accuracyClasses(accuracy: number) {
   if (accuracy >= 80) return 'bg-success-tint text-success'
@@ -63,50 +66,37 @@ export function ParentDashboard() {
               아직 완료된 테스트가 없어요. 아이가 테스트를 마치면 여기에 기록돼요.
             </p>
           ) : (
-            <div className="overflow-x-auto rounded-2xl border border-border bg-surface">
-              <table className="w-full min-w-[560px] border-collapse text-[13.5px]">
-                <thead>
-                  <tr className="bg-surface-alt">
-                    <Th>날짜</Th>
-                    <Th>단어장</Th>
-                    <Th>문항수</Th>
-                    <Th>정답률</Th>
-                    <Th>라운드</Th>
-                    <Th>소요시간</Th>
-                    <Th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {attempts.map((a) => (
-                    <tr key={a.groupId} className="border-t border-border">
-                      <Td>
-                        {formatDate(a.startedAt)}
-                        <div className="text-[11.5px] text-ink-muted">{formatTime(a.startedAt)}</div>
-                      </Td>
-                      <Td>{a.wordSetTitle}</Td>
-                      <Td>{a.totalQuestions}</Td>
-                      <Td>
-                        <span className={`rounded-full px-2.5 py-1 text-[12px] font-bold ${accuracyClasses(a.accuracy)}`}>
-                          {a.accuracy}%
-                        </span>
-                      </Td>
-                      <Td className="text-ink-muted">
-                        {a.mastered ? `${a.roundsTaken}라운드 완료` : `${a.roundsTaken}라운드 진행중`}
-                      </Td>
-                      <Td className="text-ink-muted">{formatDuration(a.totalDurationMs)}</Td>
-                      <Td>
-                        <Link
-                          to={`/parent/session/${a.groupId}`}
-                          className="flex items-center gap-1 text-[13px] font-bold text-primary"
-                        >
-                          상세보기
-                          <ChevronRightIcon width={13} height={13} />
-                        </Link>
-                      </Td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="overflow-hidden rounded-2xl border border-border bg-surface">
+              <div className={`${ROW_GRID} bg-surface-alt py-2.5 text-[11.5px] font-bold text-ink-muted`}>
+                <span>날짜</span>
+                <span>단어장</span>
+                <span className="text-center">정답률</span>
+                <span className="text-right">소요시간</span>
+              </div>
+              {attempts.map((a) => (
+                <Link
+                  key={a.groupId}
+                  to={`/parent/session/${a.groupId}`}
+                  className={`${ROW_GRID} border-t border-border py-2.5 text-[13px] active:bg-surface-alt`}
+                >
+                  <span className="leading-tight">
+                    {formatShortDate(a.startedAt)}
+                    <span className="block text-[11px] text-ink-muted">{formatTime(a.startedAt)}</span>
+                  </span>
+                  <span className="min-w-0 leading-tight">
+                    <span className="block truncate font-semibold">{a.wordSetTitle}</span>
+                    <span className="block text-[11px] text-ink-muted">{a.totalQuestions}문제</span>
+                  </span>
+                  <span className="text-center">
+                    <span className={`rounded-full px-2 py-0.5 text-[12px] font-bold ${accuracyClasses(a.accuracy)}`}>
+                      {a.accuracy}%
+                    </span>
+                  </span>
+                  <span className="whitespace-nowrap text-right text-[12px] text-ink-muted">
+                    {formatMinSec(a.totalDurationMs)}
+                  </span>
+                </Link>
+              ))}
             </div>
           )}
         </div>
@@ -158,16 +148,4 @@ function StatCard({ icon, tint, label, value }: { icon: React.ReactNode; tint: s
       <div className="mt-2.5 text-[22px] font-extrabold">{value}</div>
     </div>
   )
-}
-
-function Th({ children }: { children?: React.ReactNode }) {
-  return (
-    <th className="whitespace-nowrap px-3.5 py-2.5 text-left text-[11.5px] font-bold uppercase tracking-wide text-ink-muted">
-      {children}
-    </th>
-  )
-}
-
-function Td({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return <td className={`px-3.5 py-2.5 ${className}`}>{children}</td>
 }

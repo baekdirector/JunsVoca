@@ -254,7 +254,7 @@ router.get('/attempts/:groupId', async (req, res) => {
       : await pool.query(
           `SELECT id, session_id AS "sessionId", word_id AS "wordId", question_type AS "questionType",
                   term, meaning, correct_answer AS "correctAnswer", user_answer AS "userAnswer", correct
-           FROM quiz_answers WHERE session_id = ANY($1::int[])`,
+           FROM quiz_answers WHERE session_id = ANY($1::int[]) ORDER BY id`,
           [sessionIds],
         )
   res.json({ rounds, answers })

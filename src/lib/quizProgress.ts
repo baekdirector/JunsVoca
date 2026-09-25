@@ -13,6 +13,8 @@ export interface QuizProgress {
   round: number
   groupId: string
   startedAt: number
+  /** 화면을 보며 실제로 푼 시간(ms). 중간에 나가 있던 시간은 빠진다. (예전에 저장된 진행 상황에는 없다) */
+  elapsedMs?: number
   /** 이 테스트의 첫 라운드 결과 (복습 라운드 중 저장/복원 시에도 처음 성적을 보여주기 위해) */
   firstRound: { correct: number; total: number } | null
   /** 문제 수/유형/순서 선택으로 이미 만들어진 문제 목록 (재생성하지 않고 그대로 이어서 쓴다) */

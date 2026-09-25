@@ -3,6 +3,8 @@ import {
   checkAnswer,
   formatDate,
   formatDateTime,
+  formatMinSec,
+  formatShortDate,
   formatTime,
   generateQuestions,
   type Question,
@@ -94,7 +96,25 @@ describe('checkAnswer', () => {
   })
 })
 
+describe('소요 시간 표시', () => {
+  it('분·초 단위로 표시한다', () => {
+    expect(formatMinSec(192_000)).toBe('3분 12초')
+    expect(formatMinSec(60_000)).toBe('1분 0초')
+    expect(formatMinSec(45_400)).toBe('45초')
+    expect(formatMinSec(0)).toBe('0초')
+    expect(formatMinSec(313 * 60_000 + 32_000)).toBe('313분 32초')
+  })
+
+  it('음수는 0초로 본다', () => {
+    expect(formatMinSec(-5000)).toBe('0초')
+  })
+})
+
 describe('날짜 표시', () => {
+  it('목록용 짧은 날짜를 표시한다', () => {
+    expect(formatShortDate(new Date(2026, 8, 25, 9, 7).getTime())).toBe('9/25 (금)')
+  })
+
   it('날짜와 시간을 한국어로 표시한다', () => {
     const ts = new Date(2026, 8, 22, 0, 5).getTime()
     expect(formatDate(ts)).toBe('9월 22일 (화)')

@@ -109,6 +109,9 @@ export function Quiz() {
   const [finishDialogOpen, setFinishDialogOpen] = useState(false)
 
   const savedTitleRef = useRef('')
+  // 이 라운드에서 화면을 켜 둔 채 실제로 푼 시간(ms). 나갔다가 이어서 풀 때 그 사이 시간이
+  // 소요 시간에 들어가지 않도록, 시작~종료 시각 차이 대신 이 값을 쓴다.
+  const elapsedRef = useRef(0)
   const badgeRefs = useRef<Array<HTMLButtonElement | null>>([])
 
   const { speak, speakingTerm } = useSpeak()
@@ -167,6 +170,7 @@ export function Quiz() {
         setRound(saved.round)
         setGroupId(saved.groupId)
         setRoundStartedAt(saved.startedAt)
+        elapsedRef.current = saved.elapsedMs ?? 0
         setFirstRound(saved.firstRound)
         setPhase('asking')
       } else {
@@ -188,6 +192,7 @@ export function Quiz() {
       round,
       groupId,
       startedAt: roundStartedAt,
+      elapsedMs: elapsedRef.current,
       firstRound,
       questions,
       answers,
@@ -195,6 +200,16 @@ export function Quiz() {
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, questions, answers, qIndex, round, groupId, roundStartedAt, wordSetTitle, setCount])
+
+  // 풀고 있는 동안, 화면이 보일 때만 시간을 센다.
+  useEffect(() => {
+    if (phase !== 'asking') return
+    const tick = 1000
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') elapsedRef.current += tick
+    }, tick)
+    return () => clearInterval(timer)
+  }, [phase])
 
   useEffect(() => {
     badgeRefs.current[qIndex]?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' })
@@ -213,6 +228,7 @@ export function Quiz() {
     setAnswerInput('')
     setRound(roundNumber)
     setRoundStartedAt(Date.now())
+    elapsedRef.current = 0
     setPhase('asking')
   }
 
@@ -262,12 +278,14 @@ export function Quiz() {
     const resultFirstRound = round === 1 ? { correct: correctCount, total: finalAnswers.length } : firstRound
     if (round === 1) setFirstRound(resultFirstRound)
 
+    const durationMs = elapsedRef.current
     await recordQuizRound({
       groupId,
       wordSetId: singleId,
       wordSetTitle,
       round,
-      startedAt: roundStartedAt,
+      // 서버는 소요 시간을 finishedAt - startedAt으로 계산하므로, 실제로 푼 시간이 나오게 맞춘다.
+      startedAt: finishedAt - durationMs,
       finishedAt,
       answers: finalAnswers,
     })
@@ -277,7 +295,7 @@ export function Quiz() {
       round,
       finishedAt,
       firstRound: resultFirstRound ?? { correct: correctCount, total: finalAnswers.length },
-      durationMs: finishedAt - roundStartedAt,
+      durationMs,
       correctCount,
       wrongCount: wrongAnswers.length,
       wrongAnswers,

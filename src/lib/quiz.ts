@@ -132,6 +132,12 @@ export function formatDate(ts: number): string {
   return `${d.getMonth() + 1}월 ${d.getDate()}일 (${DAY_LABELS[d.getDay()]})`
 }
 
+/** "9/22 (화)" — 좁은 목록용 */
+export function formatShortDate(ts: number): string {
+  const d = new Date(ts)
+  return `${d.getMonth() + 1}/${d.getDate()} (${DAY_LABELS[d.getDay()]})`
+}
+
 /** "오전 12:05" */
 export function formatTime(ts: number): string {
   const d = new Date(ts)
@@ -144,6 +150,14 @@ export function formatTime(ts: number): string {
 /** "9월 22일 (화) 오전 12:05" */
 export function formatDateTime(ts: number): string {
   return `${formatDate(ts)} ${formatTime(ts)}`
+}
+
+/** 소요 시간을 "3분 12초"로. 1분이 안 되면 "45초". */
+export function formatMinSec(ms: number): string {
+  const totalSeconds = Math.max(0, Math.round(ms / 1000))
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return minutes > 0 ? `${minutes}분 ${seconds}초` : `${seconds}초`
 }
 
 export function formatDuration(ms: number): string {
